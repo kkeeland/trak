@@ -97,15 +97,9 @@ async function dispatchTask(
   task: ReadyTask,
   opts: RunOptions,
 ): Promise<{ id: string; title: string; label: string; sessionKey?: string } | null> {
-  // Check workspace lock before dispatching
-  const cwd = process.cwd();
-  const lockResult = acquireLock(cwd, task.id, 'trak-run');
-  if (!lockResult.acquired) {
-    const holder = lockResult.holder;
-    console.log(`  ${c.red}🔒${c.reset} Workspace locked by task ${c.bold}${holder.taskId}${c.reset} (agent: ${holder.agent}, PID: ${holder.pid})`);
-    console.log(`    ${c.dim}Skipping ${task.id} — use 'trak unlock ${cwd}' to force-release${c.reset}`);
-    return null;
-  }
+  // TODO: Workspace locking needs per-task target repos, not CWD-based locking.
+  // For now, skip locking in dispatch — agents handle their own git pull --rebase.
+  // Locks are still available via `trak locks` / `trak unlock` for manual use.
 
   claimTask(task.id);
 
