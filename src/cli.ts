@@ -41,6 +41,7 @@ import { mailSendCommand, mailCheckCommand, mailReadCommand, mailListCommand, Ma
 import { slingCommand, SlingOptions } from './commands/sling.js';
 import { runCommand, RunOptions } from './commands/run.js';
 import { planCommand, PlanOptions } from './commands/plan.js';
+import { polecatCommand, PolecatOptions } from './commands/polecat.js';
 import { helpCommand } from './commands/help-request.js';
 import { mergeCommand } from './commands/merge.js';
 
@@ -387,6 +388,16 @@ program
   .option('-b, --project <project>', 'Filter by project')
   .option('--json', 'Output as JSON')
   .action((opts: PlanOptions) => planCommand(opts));
+
+// Polecat — ephemeral worker agent
+program
+  .command('polecat')
+  .description('Run as an ephemeral worker agent for a task (sling dispatches, polecat IS the worker)')
+  .argument('<task-id>', 'Task ID to work on')
+  .option('--timeout <seconds>', 'Kill self after N seconds (default: 300)', '300')
+  .option('--model <model>', 'Model for the agent runtime')
+  .option('--dry-run', 'Show work instruction without executing')
+  .action((taskId: string, opts: PolecatOptions) => polecatCommand(taskId, opts));
 
 // Convoy commands
 const convoy = program
