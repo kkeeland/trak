@@ -39,6 +39,7 @@ import { doCommand, DoOptions } from './commands/do.js';
 import { convoyCreateCommand, convoyAddCommand, convoyShowCommand, convoyReadyCommand, convoyListCommand } from './commands/convoy.js';
 import { mailSendCommand, mailCheckCommand, mailReadCommand, mailListCommand, MailSendOptions, MailCheckOptions, MailListOptions } from './commands/mail.js';
 import { slingCommand, SlingOptions } from './commands/sling.js';
+import { runCommand, RunOptions } from './commands/run.js';
 
 const program = new Command();
 
@@ -364,6 +365,15 @@ program
   .option('-b, --project <project>', 'Filter by project when auto-picking')
   .option('--execute', 'Auto-spawn agent (future)')
   .action((taskId: string | undefined, opts: SlingOptions) => slingCommand(taskId, opts));
+
+program
+  .command('run')
+  .description('Orchestrate: claim ready auto tasks and dispatch agents')
+  .option('-b, --project <project>', 'Filter by project')
+  .option('--dry-run', 'Preview what would be dispatched')
+  .option('--max-agents <n>', 'Max concurrent agents (default: 3)')
+  .option('--model <model>', 'Model for spawned agents')
+  .action((opts: RunOptions) => runCommand(opts));
 
 // Convoy commands
 const convoy = program
