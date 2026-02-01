@@ -3,7 +3,7 @@ import { c } from '../utils.js';
 import path from 'path';
 import fs from 'fs';
 
-export function initCommand(opts?: { global?: boolean }): void {
+export async function initCommand(opts?: { global?: boolean }): Promise<void> {
   const isGlobal = opts?.global ?? false;
 
   if (isGlobal) {
@@ -37,10 +37,11 @@ export function initCommand(opts?: { global?: boolean }): void {
   const jsonlPath = path.join(localTrakDir, 'trak.jsonl');
   if (fs.existsSync(jsonlPath)) {
     try {
-      const jsonl = require('../jsonl.js');
-      const db = require('../db.js').getDb();
-      const records = jsonl.parseJsonl(jsonlPath);
-      const result = jsonl.importFromJsonl(db, records);
+      const { parseJsonl, importFromJsonl } = await import('../jsonl.js');
+      const { getDb } = await import('../db.js');
+      const db = getDb();
+      const records = parseJsonl(jsonlPath);
+      const result = importFromJsonl(db, records);
       console.log(`${c.green}✓${c.reset} Initialized trak database at ${c.dim}.trak/trak.db${c.reset}`);
       console.log(`  ${c.dim}Imported ${result.tasks} tasks from existing trak.jsonl${c.reset}`);
       return;
