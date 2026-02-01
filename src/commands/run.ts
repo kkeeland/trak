@@ -49,7 +49,7 @@ function getReadyAutoTasks(project?: string, minPriority?: number): ReadyTask[] 
   const maxPrio = minPriority ?? 1;
   sql += ' AND t.priority <= ?';
   params.push(maxPrio);
-  sql += ' ORDER BY t.priority DESC, t.created_at ASC';
+  sql += ' ORDER BY t.priority ASC, t.created_at ASC';
   return db.prepare(sql).all(...params) as ReadyTask[];
 }
 

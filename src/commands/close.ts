@@ -41,7 +41,6 @@ function runVerificationGate(db: ReturnType<typeof getDb>, task: Task): boolean 
   }
 
   // 2. Check if build passes (look for common build commands)
-  // Only if we're in a directory with package.json
   try {
     const pkg = execSync('cat package.json 2>/dev/null', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
     const parsed = JSON.parse(pkg);
@@ -65,14 +64,12 @@ function runVerificationGate(db: ReturnType<typeof getDb>, task: Task): boolean 
     // No package.json or not parseable — skip build/test checks
   }
 
-  // 3. If no checks ran at all, that's a soft pass (nothing to verify)
   if (checks.length === 0) {
     checks.push({ name: 'no-checks', passed: true, detail: 'No verification checks configured or detected' });
   }
 
   const allPassed = checks.every(ch => ch.passed);
 
-  // Log results to journal
   const lines = [
     `Verification gate ${allPassed ? 'PASSED' : 'FAILED'}`,
     ...checks.map(ch => `  ${ch.passed ? '✓' : '✗'} ${ch.name}: ${ch.detail}`),
@@ -81,11 +78,9 @@ function runVerificationGate(db: ReturnType<typeof getDb>, task: Task): boolean 
     task.id, lines.join('\n')
   );
 
-  // Update verification status
   db.prepare(`UPDATE tasks SET verification_status = ?, updated_at = datetime('now') WHERE id = ?`)
     .run(allPassed ? 'passed' : 'failed', task.id);
 
-  // Print results
   for (const ch of checks) {
     const icon = ch.passed ? `${c.green}✓${c.reset}` : `${c.red}✗${c.reset}`;
     console.log(`  ${icon} ${ch.name}: ${ch.detail.split('\n')[0]}`);
@@ -109,12 +104,9 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
   }
 
   // ── Verification gate ──────────────────────────────────
-  // Without --verify or --force, task goes to review (pending-review) instead of done.
-  // Agents can't self-close without proof.
   const hasExistingVerification = task.verification_status === 'passed';
 
   if (!opts?.force && !opts?.verify && !hasExistingVerification) {
-    // Block close — move to review instead
     db.prepare("UPDATE tasks SET status = 'review', updated_at = datetime('now') WHERE id = ?").run(task.id);
     db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
       task.id, `Close blocked — no verification. Status set to review (was: ${task.status}). Use --verify to run checks or --force to bypass.`
@@ -127,7 +119,6 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
     return;
   }
 
-  // If --verify flag, run verification checks now
   if (opts?.verify) {
     console.log(`${c.cyan}🔒 Running verification gate for${c.reset} ${c.bold}${task.id}${c.reset}\n`);
     const passed = runVerificationGate(db, task);
@@ -150,20 +141,53 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
     task.id, `Closed (was: ${task.status})${opts?.verify ? ' [verified]' : opts?.force ? ' [force]' : ' [pre-verified]'}`
   );
 
-  // Additive cost/token logging
-  if (opts?.cost || opts?.tokens) {
-    const addCost = opts.cost ? parseFloat(opts.cost) : 0;
-    const addTokens = opts.tokens ? parseInt(opts.tokens, 10) : 0;
-    if (addCost > 0 || addTokens > 0) {
-      db.prepare('UPDATE tasks SET cost_usd = cost_usd + ?, tokens_used = tokens_used + ? WHERE id = ?')
-        .run(addCost, addTokens, task.id);
+  // Additive cost/token logging (with granular fields)
+  {
+    const addCost = opts?.cost ? parseFloat(opts.cost) : 0;
+    const addTokens = opts?.tokens ? parseInt(opts.tokens, 10) : 0;
+    const addTokensIn = opts?.tokensIn ? parseInt(opts.tokensIn, 10) : 0;
+    const addTokensOut = opts?.tokensOut ? parseInt(opts.tokensOut, 10) : 0;
+    const model = opts?.model || '';
+    const duration = opts?.duration ? parseFloat(opts.duration) : 0;
+
+    if (addCost > 0 || addTokens > 0 || addTokensIn > 0 || addTokensOut > 0 || model || duration > 0) {
+      db.prepare(`UPDATE tasks SET
+        cost_usd = cost_usd + ?,
+        tokens_used = tokens_used + ?,
+        tokens_in = tokens_in + ?,
+        tokens_out = tokens_out + ?,
+        model_used = CASE WHEN ? != '' THEN ? ELSE model_used END,
+        duration_seconds = duration_seconds + ?
+        WHERE id = ?`)
+        .run(addCost, addTokens, addTokensIn, addTokensOut, model, model, duration, task.id);
       const parts: string[] = [];
       if (addCost > 0) parts.push(`$${addCost.toFixed(4)}`);
       if (addTokens > 0) parts.push(`${addTokens} tokens`);
+      if (addTokensIn > 0 || addTokensOut > 0) parts.push(`${addTokensIn} in / ${addTokensOut} out`);
+      if (model) parts.push(`model: ${model}`);
+      if (duration > 0) parts.push(`${duration.toFixed(1)}s`);
       db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
         task.id, `Cost logged: ${parts.join(', ')}`
       );
       console.log(`${c.green}✓${c.reset} Cost: ${parts.join(', ')}`);
+    }
+  }
+
+  // Always log a cost summary when closing (if task has accumulated cost data)
+  {
+    const updated = db.prepare('SELECT cost_usd, tokens_used, tokens_in, tokens_out, model_used, duration_seconds FROM tasks WHERE id = ?').get(task.id) as any;
+    if (updated && (updated.cost_usd > 0 || updated.tokens_used > 0)) {
+      const summary: string[] = [`💰 Final cost summary:`];
+      summary.push(`  Total: $${updated.cost_usd.toFixed(4)}`);
+      summary.push(`  Tokens: ${updated.tokens_used.toLocaleString()}`);
+      if (updated.tokens_in || updated.tokens_out) {
+        summary.push(`  Tokens in: ${updated.tokens_in.toLocaleString()}, out: ${updated.tokens_out.toLocaleString()}`);
+      }
+      if (updated.model_used) summary.push(`  Model: ${updated.model_used}`);
+      if (updated.duration_seconds > 0) summary.push(`  Duration: ${updated.duration_seconds.toFixed(1)}s`);
+      db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
+        task.id, summary.join('\n')
+      );
     }
   }
 
@@ -190,17 +214,14 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
   if (unblockedAutoTasks.length > 0) {
     const items = unblockedAutoTasks.map(t => `${t.id} (${t.title})`).join(', ');
     console.log(`⚡ Unblocked auto tasks: ${items}`);
-    // Emit machine-readable event for orchestrators
     for (const t of unblockedAutoTasks) {
       console.log(`TRAK_EVENT:UNBLOCKED:${t.id}:${t.title}`);
     }
-    // Auto-dispatch: sling each unblocked auto task immediately
     for (const t of unblockedAutoTasks) {
       try {
         console.log(`⚡ Auto-dispatching: ${t.id} — ${t.title}`);
         slingCommand(t.id, { json: true });
       } catch {
-        // slingCommand calls process.exit on failure — catch to continue chain
         console.log(`${c.dim}  (dispatch skipped for ${t.id})${c.reset}`);
       }
     }
