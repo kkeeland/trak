@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>trak ⚡ — Task tracking for AI agent swarms</title>
+  <meta name="description" content="Assign work to Claude Code, have Cursor verify it, track what it cost — all from the terminal in under 100ms.">
+  <meta property="og:title" content="trak ⚡ — Task tracking for AI agent swarms">
+  <meta property="og:description" content="Zero-friction task tracking built for AI agents. SQLite speed, JSONL sync, multi-agent coordination.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --border: #1e1e2e;
+      --text: #e0e0e8;
+      --muted: #8888a0;
+      --accent: #f59e0b;
+      --accent-dim: #b45309;
+      --green: #22c55e;
+      --cyan: #06b6d4;
+      --red: #ef4444;
+      --purple: #a78bfa;
+      --radius: 12px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---- NAV ---- */
+    nav {
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: rgba(10, 10, 15, 0.92);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+    nav .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+    .logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 28px; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 0.9rem; font-weight: 500; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    /* ---- HERO ---- */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 24px;
+      letter-spacing: 0.03em;
+    }
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+      margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--accent), #fbbf24);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 1.2rem;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 40px;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.15s;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+    }
+    .btn-primary:hover {
+      background: #fbbf24;
+      text-decoration: none;
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--muted);
+      text-decoration: none;
+      transform: translateY(-1px);
+    }
+
+    /* ---- INSTALL BAR ---- */
+    .install-bar {
+      margin: 48px auto 0;
+      max-width: 420px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.9rem;
+    }
+    .install-bar code { color: var(--green); }
+    .install-bar code span { color: var(--muted); }
+    .install-bar button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 0.85rem;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .install-bar button:hover { background: var(--border); color: var(--text); }
+
+    /* ---- TERMINAL ---- */
+    .terminal-section { padding: 60px 0; }
+    .terminal {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      max-width: 720px;
+      margin: 0 auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .terminal-header {
+      padding: 12px 16px;
+      background: #161b22;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .terminal-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+    }
+    .terminal-dot:nth-child(1) { background: #ff5f57; }
+    .terminal-dot:nth-child(2) { background: #febc2e; }
+    .terminal-dot:nth-child(3) { background: #28c840; }
+    .terminal-body {
+      padding: 20px 24px;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+    .terminal-body .prompt { color: var(--green); }
+    .terminal-body .cmd { color: var(--text); }
+    .terminal-body .comment { color: #484f58; }
+    .terminal-body .output { color: var(--muted); }
+    .terminal-body .highlight { color: var(--accent); }
+    .terminal-body .cyan { color: var(--cyan); }
+
+    /* ---- FEATURES ---- */
+    .features {
+      padding: 80px 0;
+    }
+    .features-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    .features-header h2 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+    .features-header p {
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: var(--accent-dim); }
+    .feature-icon {
+      font-size: 1.6rem;
+      margin-bottom: 14px;
+    }
+    .feature-card h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    /* ---- BENCHMARKS ---- */
+    .benchmarks {
+      padding: 80px 0;
+    }
+    .benchmarks h2 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+    .benchmarks > p {
+      text-align: center;
+      color: var(--muted);
+      margin-bottom: 48px;
+    }
+    .bench-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .bench-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      text-align: center;
+    }
+    .bench-value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--green);
+      letter-spacing: -0.03em;
+    }
+    .bench-label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+    .bench-sublabel {
+      color: var(--muted);
+      font-size: 0.75rem;
+      opacity: 0.7;
+    }
+
+    /* ---- WORKFLOW ---- */
+    .workflow {
+      padding: 80px 0;
+    }
+    .workflow h2 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 48px;
+    }
+    .workflow-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 32px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .workflow-step {
+      text-align: center;
+    }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+    }
+    .workflow-step h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .workflow-step p {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .workflow-step code {
+      display: inline-block;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: var(--green);
+      margin-top: 8px;
+    }
+
+    /* ---- INTEGRATIONS ---- */
+    .integrations {
+      padding: 80px 0;
+      text-align: center;
+    }
+    .integrations h2 {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+    }
+    .integrations > p {
+      color: var(--muted);
+      margin-bottom: 36px;
+      font-size: 1.05rem;
+    }
+    .integration-tags {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .int-tag {
+      padding: 10px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+
+    /* ---- CTA ---- */
+    .cta {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .cta h2 {
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+    .cta p {
+      color: var(--muted);
+      font-size: 1.1rem;
+      margin-bottom: 32px;
+    }
+
+    /* ---- FOOTER ---- */
+    footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+    }
+    footer .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    footer .left { color: var(--muted); font-size: 0.85rem; }
+    footer .right { display: flex; gap: 20px; }
+    footer .right a { color: var(--muted); font-size: 0.85rem; }
+    footer .right a:hover { color: var(--text); }
+
+    /* ---- RESPONSIVE ---- */
+    @media (max-width: 640px) {
+      .hero { padding: 60px 0 50px; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .install-bar { flex-direction: column; gap: 12px; text-align: center; }
+      nav .nav-links { gap: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="container">
+      <div class="logo">trak<span>⚡</span></div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#benchmarks">Speed</a>
+        <a href="https://github.com/kkeeland/trak">GitHub</a>
+        <a href="https://www.npmjs.com/package/trak-cli">npm</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">v0.2.0 — Open Source</div>
+      <h1>Task tracking for<br><em>AI agent swarms</em></h1>
+      <p>Assign work to Claude Code, have Cursor verify it, track what it cost — all from the terminal in under 100ms.</p>
+      <div class="hero-actions">
+        <a href="https://github.com/kkeeland/trak" class="btn btn-primary">
+          ★ Star on GitHub
+        </a>
+        <a href="#quickstart" class="btn btn-secondary">
+          Quick Start →
+        </a>
+      </div>
+      <div class="install-bar">
+        <code><span>$</span> npm install -g trak-cli</code>
+        <button onclick="navigator.clipboard.writeText('npm install -g trak-cli').then(()=>this.textContent='Copied!').catch(()=>{})">Copy</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Terminal Demo -->
+  <section class="terminal-section" id="quickstart">
+    <div class="container">
+      <div class="terminal">
+        <div class="terminal-header">
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+        </div>
+        <div class="terminal-body">
+          <div><span class="comment"># Initialize in your project</span></div>
+          <div><span class="prompt">❯ </span><span class="cmd">trak init</span></div>
+          <div><span class="output">✓ Created .trak/trak.db</span></div>
+          <div>&nbsp;</div>
+          <div><span class="comment"># Create tasks, assign to agents</span></div>
+          <div><span class="prompt">❯ </span><span class="cmd">trak create "Fix JWT race condition" --project api -p 0</span></div>
+          <div><span class="output">✓ Created <span class="highlight">trak-a1b2c3</span> [P0] Fix JWT race condition</span></div>
+          <div>&nbsp;</div>
+          <div><span class="prompt">❯ </span><span class="cmd">trak assign trak-a1b2c3 claude-code</span></div>
+          <div><span class="output">✓ Assigned to claude-code</span></div>
+          <div>&nbsp;</div>
+          <div><span class="comment"># Agents log progress & costs</span></div>
+          <div><span class="prompt">❯ </span><span class="cmd">trak log trak-a1b2c3 "Fixed. Added token blacklist" --cost 0.42</span></div>
+          <div><span class="output">✓ Logged to trak-a1b2c3 [claude-code] $0.42</span></div>
+          <div>&nbsp;</div>
+          <div><span class="comment"># Verify with another agent</span></div>
+          <div><span class="prompt">❯ </span><span class="cmd">trak verify trak-a1b2c3 --run "npm test"</span></div>
+          <div><span class="output">✓ 47 tests passed — <span class="cyan">VERIFIED</span></span></div>
+          <div>&nbsp;</div>
+          <div><span class="prompt">❯ </span><span class="cmd">trak board</span></div>
+          <div><span class="output">  <span class="highlight">api</span>  ████████░░ 80%  4/5 done  $1.84 total</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="features-header">
+        <h2>Built for agents, not dashboards</h2>
+        <p>Everything an AI agent needs to coordinate. Nothing it doesn't.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔥</div>
+          <h3>Heat Score</h3>
+          <p>Tasks auto-sort by urgency. Dependency fan-out + age + recency = hot. Agents always know what matters most.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔗</div>
+          <h3>Dependencies</h3>
+          <p>Model real workflows. <code>trak ready</code> shows only what's actually unblocked. No wasted cycles.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">💰</div>
+          <h3>Cost Tracking</h3>
+          <p>Log tokens and dollars per task. See spend by project, agent, or time period. Know what your swarm costs.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3>Multi-Agent</h3>
+          <p>Assign, claim, verify. One agent writes code, another reviews. Built-in coordination without a human router.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📋</div>
+          <h3>Epics & Journals</h3>
+          <p>Group tasks into epics. Every task has an append-only journal — decisions, findings, progress. Agents pick up where others left off.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔄</div>
+          <h3>JSONL Sync</h3>
+          <p>Every write shadows to a JSONL file. Git commit, push, clone — any agent rebuilds the full board from the log.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Benchmarks -->
+  <section class="benchmarks" id="benchmarks">
+    <div class="container">
+      <h2>Stupid fast</h2>
+      <p>Measured on a 2GB VPS, Node 22, 500 tasks. Median of 5 runs.</p>
+      <div class="bench-grid">
+        <div class="bench-card">
+          <div class="bench-value">0.1ms</div>
+          <div class="bench-label">trak create</div>
+        </div>
+        <div class="bench-card">
+          <div class="bench-value">9.7ms</div>
+          <div class="bench-label">trak list</div>
+          <div class="bench-sublabel">500 tasks</div>
+        </div>
+        <div class="bench-card">
+          <div class="bench-value">13.7ms</div>
+          <div class="bench-label">trak board</div>
+          <div class="bench-sublabel">500 tasks</div>
+        </div>
+        <div class="bench-card">
+          <div class="bench-value">5.9ms</div>
+          <div class="bench-label">trak ready</div>
+          <div class="bench-sublabel">500 tasks</div>
+        </div>
+        <div class="bench-card">
+          <div class="bench-value">22.9ms</div>
+          <div class="bench-label">trak heat</div>
+          <div class="bench-sublabel">500 tasks</div>
+        </div>
+        <div class="bench-card">
+          <div class="bench-value">0.2ms</div>
+          <div class="bench-label">trak close</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Workflow -->
+  <section class="workflow">
+    <div class="container">
+      <h2>Three-step agent workflow</h2>
+      <div class="workflow-steps">
+        <div class="workflow-step">
+          <div class="step-num">1</div>
+          <h3>Init & Setup</h3>
+          <p>One command to configure your AI tool. trak writes the right config file automatically.</p>
+          <code>trak setup claude</code>
+        </div>
+        <div class="workflow-step">
+          <div class="step-num">2</div>
+          <h3>Create & Assign</h3>
+          <p>Create tasks with priorities, tags, dependencies. Assign to agents. They claim work from the board.</p>
+          <code>trak ready</code>
+        </div>
+        <div class="workflow-step">
+          <div class="step-num">3</div>
+          <h3>Verify & Ship</h3>
+          <p>Run tests, diff changes, get cross-agent verification. Close with cost tracking.</p>
+          <code>trak verify --run "npm test"</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Integrations -->
+  <section class="integrations">
+    <div class="container">
+      <h2>One-command setup</h2>
+      <p>Works with every major AI coding tool.</p>
+      <div class="integration-tags">
+        <div class="int-tag">Claude Code</div>
+        <div class="int-tag">Cursor</div>
+        <div class="int-tag">Codex</div>
+        <div class="int-tag">Aider</div>
+        <div class="int-tag">Clawdbot</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <div class="container">
+      <h2>Stop being the router between your agents</h2>
+      <p>Give them a shared board. Let them coordinate.</p>
+      <div class="hero-actions">
+        <a href="https://github.com/kkeeland/trak" class="btn btn-primary">
+          Get Started →
+        </a>
+        <a href="https://www.npmjs.com/package/trak-cli" class="btn btn-secondary">
+          npm install trak-cli
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="left">MIT © Kevin Keeland</div>
+      <div class="right">
+        <a href="https://github.com/kkeeland/trak">GitHub</a>
+        <a href="https://www.npmjs.com/package/trak-cli">npm</a>
+        <a href="https://github.com/kkeeland/trak/blob/main/CONTRIBUTING.md">Contributing</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
