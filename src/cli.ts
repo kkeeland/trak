@@ -41,6 +41,7 @@ import { mailSendCommand, mailCheckCommand, mailReadCommand, mailListCommand, Ma
 import { slingCommand, SlingOptions } from './commands/sling.js';
 import { runCommand, RunOptions } from './commands/run.js';
 import { helpCommand } from './commands/help-request.js';
+import { mergeCommand } from './commands/merge.js';
 
 const program = new Command();
 
@@ -455,5 +456,11 @@ program
   .argument('<task-id>', 'Task ID')
   .argument('<message>', 'Help request message')
   .action((taskId: string, message: string) => helpCommand(taskId, message));
+
+// Merge conflicted JSONL
+program
+  .command('merge')
+  .description('Resolve git merge conflicts in .trak/trak.jsonl (last-write-wins per task)')
+  .action(() => mergeCommand());
 
 program.parse();
