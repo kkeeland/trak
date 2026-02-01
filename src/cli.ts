@@ -75,6 +75,7 @@ program
   .option('--review', 'Set autonomy to review (agent executes, human reviews)')
   .option('--approve', 'Set autonomy to approve (human must approve before execution)')
   .option('--budget <amount>', 'Budget ceiling in USD')
+  .option('--timeout <duration>', 'Agent timeout for this task (e.g. 30m, 1h, 900)')
   .action((title: string, opts: CreateOptions) => createCommand(title, opts));
 
 program
