@@ -1,10 +1,7 @@
 {
-  "name": "@kkeeland/trak",
+  "name": "trak-ai",
   "version": "0.2.0",
-  "publishConfig": {
-    "access": "public"
-  },
-  "description": "Task tracking for AI agent swarms",
+  "description": "AI-native task tracker for agent swarms. SQLite speed, JSONL git sync, multi-agent coordination.",
   "main": "dist/cli.js",
   "bin": {
     "trak": "./dist/cli.js"
@@ -18,14 +15,16 @@
     "test:watch": "vitest"
   },
   "keywords": [
+    "ai",
+    "agent",
     "task-tracker",
     "cli",
-    "ai-agent",
-    "claude-code",
-    "cursor",
-    "multi-agent",
     "sqlite",
-    "local-first"
+    "swarm",
+    "claude",
+    "cursor",
+    "codex",
+    "multi-agent"
   ],
   "author": "Kevin Keeland",
   "license": "MIT",
