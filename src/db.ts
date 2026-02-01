@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 const TRAK_DIR = '.trak';
 const DB_FILE = 'trak.db';
@@ -53,19 +54,40 @@ export interface LogEntry {
   author: string;
 }
 
+function getGlobalDbPath(): string {
+  return path.join(os.homedir(), TRAK_DIR, DB_FILE);
+}
+
 function findDbPath(): string | null {
+  // 1. TRAK_DB env var takes priority
+  if (process.env.TRAK_DB) {
+    if (fs.existsSync(process.env.TRAK_DB)) return process.env.TRAK_DB;
+    return null;
+  }
+
+  // 2. Walk up from cwd looking for project-local .trak/trak.db
   let dir = process.cwd();
   while (true) {
     const candidate = path.join(dir, TRAK_DIR, DB_FILE);
     if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) break;
     dir = parent;
   }
+
+  // 3. Fall back to global ~/.trak/trak.db
+  const globalPath = getGlobalDbPath();
+  if (fs.existsSync(globalPath)) return globalPath;
+
+  return null;
 }
 
 export function getDbPath(): string {
   return path.join(process.cwd(), TRAK_DIR, DB_FILE);
+}
+
+export function getGlobalDbDir(): string {
+  return path.join(os.homedir(), TRAK_DIR);
 }
 
 export function dbExists(): boolean {
@@ -99,8 +121,8 @@ export function getDb(): Database.Database {
   return db;
 }
 
-export function initDb(): Database.Database {
-  const dir = path.join(process.cwd(), TRAK_DIR);
+export function initDb(global?: boolean): Database.Database {
+  const dir = global ? getGlobalDbDir() : path.join(process.cwd(), TRAK_DIR);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

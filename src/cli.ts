@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
+import { searchCommand, SearchOptions } from './commands/search.js';
 import { createCommand, CreateOptions } from './commands/create.js';
 import { listCommand, ListOptions } from './commands/list.js';
 import { readyCommand, ReadyOptions } from './commands/ready.js';
@@ -41,7 +42,8 @@ program
 program
   .command('init')
   .description('Initialize trak database in .trak/')
-  .action(() => initCommand());
+  .option('-g, --global', 'Create global database at ~/.trak/trak.db')
+  .action((opts: { global?: boolean }) => initCommand(opts));
 
 program
   .command('create')
@@ -277,5 +279,13 @@ program
   .description('Interactive project walkthrough for new agents')
   .argument('<project>', 'Project name')
   .action((project: string) => onboardCommand(project));
+
+program
+  .command('search')
+  .description('Full-text search across tasks and journal entries')
+  .argument('<query>', 'Search query')
+  .option('-b, --project <project>', 'Scope to project')
+  .option('-a, --all', 'Include done/archived')
+  .action((query: string, opts: SearchOptions) => searchCommand(query, opts));
 
 program.parse();
