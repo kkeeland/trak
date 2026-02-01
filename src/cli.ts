@@ -40,6 +40,7 @@ import { convoyCreateCommand, convoyAddCommand, convoyShowCommand, convoyReadyCo
 import { mailSendCommand, mailCheckCommand, mailReadCommand, mailListCommand, MailSendOptions, MailCheckOptions, MailListOptions } from './commands/mail.js';
 import { slingCommand, SlingOptions } from './commands/sling.js';
 import { runCommand, RunOptions } from './commands/run.js';
+import { planCommand, PlanOptions } from './commands/plan.js';
 import { helpCommand } from './commands/help-request.js';
 import { mergeCommand } from './commands/merge.js';
 
@@ -379,6 +380,13 @@ program
   .option('--model <model>', 'Model for spawned agents')
   .option('-w, --watch', 'Watch mode: poll for newly ready tasks and auto-dispatch')
   .action((opts: RunOptions) => runCommand(opts));
+
+program
+  .command('plan')
+  .description('Show execution plan — ready vs blocked auto tasks (dry-run for trak run)')
+  .option('-b, --project <project>', 'Filter by project')
+  .option('--json', 'Output as JSON')
+  .action((opts: PlanOptions) => planCommand(opts));
 
 // Convoy commands
 const convoy = program
