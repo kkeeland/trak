@@ -7,9 +7,32 @@
 
 ---
 
-## The Problem
+## Why You Need This
 
-AI coding agents have no persistent memory of what they're working on. Tasks live in your head, in scattered GitHub issues, or in tools built for humans. When you run 5 agents in parallel, nobody knows who's doing what, what's been verified, or what it cost.
+You're using Claude Code, Cursor, or Codex. Maybe all three. Here's what happens:
+
+**Monday:** You tell Claude Code to build an auth system. It does great work. Session ends.
+
+**Tuesday:** New session. Claude has no idea what happened yesterday. You re-explain everything. It starts from scratch, or worse — builds something that conflicts with Monday's work.
+
+**Wednesday:** You've got Cursor fixing bugs while Claude Code builds features. They step on each other. Neither knows what the other did. You're the only one holding the full picture, and you're losing it.
+
+**Thursday:** Your AI bill is $47 this week. On what? Which tasks? Which agent wasted tokens re-doing work? No idea.
+
+**This is the problem.** AI agents are powerful but they have amnesia. Every session starts fresh. There's no shared memory, no coordination, no accountability. You become the bottleneck — the human router between agents that can't talk to each other.
+
+**trak fixes this.**
+
+```
+trak ready                    # What needs doing? (instant, from SQLite)
+trak status auth-fix wip      # Agent claims a task
+trak log auth-fix "Fixed the JWT validation bug, added refresh tokens"
+trak close auth-fix           # Done. Logged. Next agent picks up where this left off.
+```
+
+Every task has a **journal** — a persistent log of what happened, who did it, and what it cost. When a new agent session starts, it runs `trak context myproject` and gets the full story in seconds. No re-explaining. No lost work. No stepping on each other.
+
+**The real unlock:** When you can assign Agent 1 to build something and Agent 2 to verify it — with the full chain tracked — you stop being the router and start being the decision-maker. That's what trak enables.
 
 ## The Solution
 
