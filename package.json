@@ -34,7 +34,7 @@
   ],
   "author": "Kevin Keeland",
   "license": "MIT",
-  "homepage": "https://github.com/kkeeland/trak",
+  "homepage": "https://kkeeland.github.io/trak/",
   "repository": {
     "type": "git",
     "url": "https://github.com/kkeeland/trak.git"
@@ -42,11 +42,21 @@
   "dependencies": {
     "better-sqlite3": "^11.7.0",
     "chalk": "^5.4.1",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "express-session": "^1.19.0",
+    "jsonwebtoken": "^9.0.3",
+    "passport": "^0.7.0",
+    "passport-github2": "^0.1.12",
+    "passport-google-oauth20": "^2.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/express-session": "^1.18.2",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.19.7",
+    "@types/passport": "^1.0.17",
+    "@types/passport-github2": "^1.2.9",
+    "@types/passport-google-oauth20": "^2.0.17",
     "esbuild": "^0.27.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
