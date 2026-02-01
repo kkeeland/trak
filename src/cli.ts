@@ -376,6 +376,7 @@ program
   .option('--dry-run', 'Preview what would be dispatched')
   .option('--max-agents <n>', 'Max concurrent agents (default: 3)')
   .option('--model <model>', 'Model for spawned agents')
+  .option('-w, --watch', 'Watch mode: poll for newly ready tasks and auto-dispatch')
   .action((opts: RunOptions) => runCommand(opts));
 
 // Convoy commands

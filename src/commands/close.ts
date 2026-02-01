@@ -1,5 +1,6 @@
 import { getDb, Task, afterWrite } from '../db.js';
 import { c, STATUS_EMOJI } from '../utils.js';
+import { slingCommand } from './sling.js';
 
 export interface CloseOptions {
   cost?: string;
@@ -67,6 +68,16 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
     // Emit machine-readable event for orchestrators
     for (const t of unblockedAutoTasks) {
       console.log(`TRAK_EVENT:UNBLOCKED:${t.id}:${t.title}`);
+    }
+    // Auto-dispatch: sling each unblocked auto task immediately
+    for (const t of unblockedAutoTasks) {
+      try {
+        console.log(`⚡ Auto-dispatching: ${t.id} — ${t.title}`);
+        slingCommand(t.id, { json: true });
+      } catch {
+        // slingCommand calls process.exit on failure — catch to continue chain
+        console.log(`${c.dim}  (dispatch skipped for ${t.id})${c.reset}`);
+      }
     }
   }
 }

@@ -7,6 +7,7 @@ export interface RunOptions {
   dryRun?: boolean;
   maxAgents?: string;
   model?: string;
+  watch?: boolean;
 }
 
 interface ReadyTask {
@@ -173,8 +174,77 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     console.log(`${c.dim}  ${readyTasks.length - tasksToRun.length} more ready tasks waiting (increase --max-agents)${c.reset}`);
   }
 
-  // Show the watch hint
-  console.log(`\n${c.dim}Monitor progress: trak list --status wip${c.reset}`);
-  console.log(`${c.dim}When agents close tasks, blocked tasks auto-unblock.${c.reset}`);
-  console.log(`${c.dim}Run 'trak run' again to dispatch newly unblocked work.${c.reset}\n`);
+  // Show the watch hint or enter watch mode
+  if (opts.watch && !opts.dryRun) {
+    console.log(`\n${c.bold}👀 Watch mode active${c.reset} — polling every 5s for newly ready tasks`);
+    console.log(`${c.dim}Press Ctrl-C to exit${c.reset}\n`);
+
+    const alreadyDispatched = new Set(dispatched.map(d => d.id));
+    let running = true;
+
+    const cleanup = () => {
+      running = false;
+      console.log(`\n${c.dim}Watch mode stopped.${c.reset}`);
+      process.exit(0);
+    };
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+
+    const poll = async () => {
+      while (running) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        if (!running) break;
+
+        const newReady = getReadyAutoTasks(opts.project)
+          .filter(t => !alreadyDispatched.has(t.id));
+
+        const now = new Date().toLocaleTimeString();
+        if (newReady.length === 0) {
+          process.stdout.write(`\r${c.dim}[${now}] Watching... no new ready tasks${c.reset}  `);
+          continue;
+        }
+
+        console.log(`\n${c.green}[${now}]${c.reset} ${newReady.length} new task(s) ready`);
+
+        const maxAgents = parseInt(opts.maxAgents || '3', 10);
+        const batch = newReady.slice(0, maxAgents - alreadyDispatched.size);
+
+        for (const task of batch) {
+          claimTask(task.id);
+          alreadyDispatched.add(task.id);
+
+          const agentTask = buildAgentTask(task);
+          const label = `trak-${task.id}`;
+
+          try {
+            const fs = await import('fs');
+            const tmpFile = `/tmp/trak-run-${task.id}.json`;
+            fs.writeFileSync(tmpFile, JSON.stringify({
+              task: agentTask, label, cleanup: 'delete', runTimeoutSeconds: 300,
+            }));
+
+            try {
+              execSync('which clawdbot', { stdio: 'ignore' });
+              execSync(
+                `clawdbot session spawn --label "${label}" --task-file "${tmpFile}" --cleanup delete --timeout 300 2>&1`,
+                { encoding: 'utf-8', timeout: 10000 }
+              );
+              console.log(`  ${c.green}✓${c.reset} Spawned agent for ${c.bold}${task.id}${c.reset} — ${task.title}`);
+            } catch {
+              console.log(`  ${c.yellow}⚠${c.reset} Claimed ${c.bold}${task.id}${c.reset} — ${task.title}`);
+              console.log(`TRAK_DISPATCH:${task.id}:${label}:${tmpFile}`);
+            }
+          } catch (err: any) {
+            console.error(`  ${c.red}✗${c.reset} Failed to dispatch ${task.id}: ${err.message}`);
+          }
+        }
+      }
+    };
+
+    await poll();
+  } else {
+    console.log(`\n${c.dim}Monitor progress: trak list --status wip${c.reset}`);
+    console.log(`${c.dim}When agents close tasks, blocked tasks auto-unblock.${c.reset}`);
+    console.log(`${c.dim}Run 'trak run --watch' to auto-dispatch newly unblocked work.${c.reset}\n`);
+  }
 }
