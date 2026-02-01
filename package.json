@@ -1,5 +1,5 @@
 {
-  "name": "trak-cli",
+  "name": "trak-ai",
   "version": "0.2.0",
   "description": "AI-native task tracker for agent swarms. SQLite speed, JSONL git sync, multi-agent coordination.",
   "main": "dist/cli.js",
