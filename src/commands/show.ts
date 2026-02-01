@@ -34,6 +34,15 @@ export function showCommand(id: string): void {
     const vsColor = task.verification_status === 'passed' ? c.green : task.verification_status === 'failed' ? c.red : c.yellow;
     console.log(`  ${c.dim}Verify:${c.reset}    ${vsColor}${task.verification_status}${c.reset}`);
   }
+  // Epic child count and completion percentage
+  if (task.is_epic) {
+    const epicChildren = db.prepare('SELECT status FROM tasks WHERE epic_id = ?').all(task.id) as { status: string }[];
+    const total = epicChildren.length;
+    const done = epicChildren.filter(t => t.status === 'done' || t.status === 'archived').length;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    const pctColor = pct === 100 ? c.green : pct >= 50 ? c.yellow : c.red;
+    console.log(`  ${c.dim}Children:${c.reset}  ${total} tasks, ${pctColor}${done}/${total} complete (${pct}%)${c.reset}`);
+  }
   if (task.agent_session) console.log(`  ${c.dim}Session:${c.reset}   ${task.agent_session}`);
   if (task.tokens_used) console.log(`  ${c.dim}Tokens:${c.reset}    ${task.tokens_used.toLocaleString()}`);
   if (task.cost_usd) console.log(`  ${c.dim}Cost:${c.reset}      $${task.cost_usd.toFixed(4)}`);

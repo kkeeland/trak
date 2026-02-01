@@ -34,10 +34,21 @@ function getParents(db: Database.Database, taskId: string): string[] {
   return rows.map(r => r.parent_id);
 }
 
-// Get children (downstream): tasks that depend on this task
+// Get children (downstream): tasks that depend on this task + epic children
 function getChildren(db: Database.Database, taskId: string): string[] {
-  const rows = db.prepare('SELECT child_id FROM dependencies WHERE parent_id = ?').all(taskId) as { child_id: string }[];
-  return rows.map(r => r.child_id);
+  const depRows = db.prepare('SELECT child_id FROM dependencies WHERE parent_id = ?').all(taskId) as { child_id: string }[];
+  const ids = new Set(depRows.map(r => r.child_id));
+
+  // If this task is an epic, also include tasks with epic_id = this task
+  const node = db.prepare('SELECT is_epic FROM tasks WHERE id = ?').get(taskId) as { is_epic: number } | undefined;
+  if (node?.is_epic) {
+    const epicChildren = db.prepare('SELECT id FROM tasks WHERE epic_id = ?').all(taskId) as { id: string }[];
+    for (const ec of epicChildren) {
+      ids.add(ec.id);
+    }
+  }
+
+  return [...ids];
 }
 
 function formatTaskLine(node: TaskNode, targetId: string): string {

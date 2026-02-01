@@ -22,6 +22,7 @@ import { importBeadsCommand } from './commands/import-beads.js';
 import { setupCommand } from './commands/setup.js';
 import { configGetCommand, configSetCommand, configListCommand } from './commands/config.js';
 import { syncCommand, SyncOptions } from './commands/sync.js';
+import { pullCommand } from './commands/pull.js';
 import { traceCommand, TraceOptions } from './commands/trace.js';
 import { historyCommand } from './commands/history.js';
 import { contextCommand } from './commands/context.js';
@@ -323,5 +324,11 @@ program
   .description('Export JSONL and commit to git')
   .option('--push', 'Also push to remote')
   .action((opts: SyncOptions) => syncCommand(opts));
+
+// Pull command
+program
+  .command('pull')
+  .description('Git pull and rebuild database from JSONL')
+  .action(() => pullCommand());
 
 program.parse();

@@ -247,6 +247,7 @@ export function getCurrentDbPath(): string | null {
  * After-write hook: export to JSONL for git sync.
  * Must be called with the db instance after any mutation.
  * Dynamically imports jsonl to avoid circular deps.
+ * If sync.autocommit is enabled, also runs sync (git add + commit).
  */
 export function afterWrite(db: Database.Database): void {
   try {
@@ -255,6 +256,19 @@ export function afterWrite(db: Database.Database): void {
     // Dynamic require to avoid circular import
     const jsonl = require('./jsonl.js');
     jsonl.exportToJsonl(db, dbPath);
+
+    // Check for autocommit config
+    try {
+      db.exec(`CREATE TABLE IF NOT EXISTS trak_config (key TEXT PRIMARY KEY, value TEXT)`);
+      const row = db.prepare('SELECT value FROM trak_config WHERE key = ?').get('sync.autocommit') as { value: string } | undefined;
+      if (row && JSON.parse(row.value) === true) {
+        // Dynamic require to avoid circular deps
+        const { syncCommand } = require('./commands/sync.js');
+        syncCommand({ push: false });
+      }
+    } catch {
+      // Autocommit is best-effort
+    }
   } catch {
     // JSONL export is best-effort
   }
