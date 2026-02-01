@@ -9,7 +9,10 @@
   "scripts": {
     "build": "./node_modules/.bin/tsc",
     "dev": "tsc --watch",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "bench": "node benchmarks/bench.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "task-tracker",
@@ -36,7 +39,8 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.7",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=18"

@@ -145,6 +145,67 @@ Coming from Beads? One command:
 trak import-beads .beads/
 ```
 
+## Benchmarks
+
+Measured on a 2GB VPS, Node 22 (median of 5 runs, 500 tasks across 5 projects with ~495 dependencies):
+
+| Operation | Tasks | Time |
+|-----------|-------|------|
+| `trak create` | — | 0.1ms |
+| `trak list` | 500 | 9.7ms |
+| `trak board` | 500 | 13.7ms |
+| `trak ready` | 500 | 5.9ms |
+| `trak heat` | 500 | 22.9ms |
+| `trak show` | 1 | 0.1ms |
+| `trak close` | 1 | 0.2ms |
+
+All operations under 25ms. SQLite doesn't need a network.
+
+Run them yourself: `npm run bench`
+
+## FAQ
+
+**"This is just a SQLite wrapper around a todo list."**
+
+Yes. And SQLite is just a file with SQL. Simplicity is the feature. Every operation under 25ms, zero config, works offline, no account needed. Try that with Linear.
+
+**"Why not just use GitHub Issues?"**
+
+GitHub Issues requires internet, has API rate limits (5000/hr), takes 200-800ms per call, and has zero concept of which AI agent is working on what. trak is local SQLite — your agents read/write task state without burning API calls or tokens re-explaining context.
+
+**"The verification chain is just a status label."**
+
+Not anymore. `trak verify --run "npm test"` actually executes your test suite and records pass/fail. `trak verify --diff` shows exactly what changed. Verification is real, not ceremonial.
+
+**"Cost tracking is manual."**
+
+Today, yes — agents log their own cost via `trak log`. Auto-detection hooks for Clawdbot are shipping in v0.2. For Claude Code and Cursor, there's no public API for token usage yet. When there is, trak will capture it. PRs welcome.
+
+**"No tests?"**
+
+[Test suite](src/). 40+ tests covering every command.
+
+**"Another npm package with native deps?"**
+
+better-sqlite3 uses native bindings for speed. If node-gyp is a problem, we're evaluating sql.js (WASM) as a fallback. Long-term: standalone binary via pkg or Bun.
+
+**"Cool for one person, useless for teams."**
+
+Local-first is a design choice, not a limitation. Team sync via git is on the roadmap. But the 90% use case today is one developer running multiple AI agents — and for that, local SQLite is 10x faster than any cloud API.
+
+**"Why not just use Beads?"**
+
+Beads is great — we used it before building trak. Here's what's different:
+
+| | trak | Beads |
+|---|---|---|
+| Multi-agent coordination | ✅ assign, verify, claim | ❌ single-agent |
+| Verification chains | ✅ --run, --diff | ❌ |
+| Cost tracking | ✅ per task per agent | ❌ |
+| One-command setup | ✅ `trak setup claude` | ❌ manual |
+| Heat score | ✅ auto-priority | ❌ manual only |
+| Migration | ✅ `trak import-beads` | — |
+
 ## All Commands
 
 | Command | Description | Example |
