@@ -222,7 +222,7 @@ npm test
 
 - **JSONL conflict resolution is last-write-wins.** If two agents write simultaneously, the last sync wins. Fine for single-developer multi-agent workflows; not ready for team use.
 - **Cost tracking is manual.** Agents must pass `--cost`/`--tokens` explicitly. Auto-detection hooks are planned but depend on upstream APIs exposing token usage.
-- **Not on npm yet.** Install from git. The package will publish as `@kkeeland/trak` when ready.
+- **Available on npm as `trak-cli`.** Install globally with `npm i -g trak-cli` or use `npx trak-cli`.
 - **SQLite + native deps.** `better-sqlite3` requires native compilation. If `node-gyp` is a problem, a WASM fallback is being evaluated.
 
 ## All Commands
