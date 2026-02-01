@@ -1,5 +1,6 @@
 import { getDb, Task, afterWrite, getConfigValue } from '../db.js';
 import { generateId, c, STATUS_EMOJI } from '../utils.js';
+import { hookTaskCreated } from '../hooks.js';
 
 export interface CreateOptions {
   project?: string;
@@ -67,6 +68,10 @@ export function createCommand(title: string, opts: CreateOptions): void {
   `).run(id, `Created: ${title}`, opts.session || 'human');
 
   afterWrite(db);
+
+  // Fire webhook
+  const createdTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task;
+  if (createdTask) hookTaskCreated(createdTask);
 
   console.log(`${c.green}✓${c.reset} Created ${c.bold}${id}${c.reset} ${STATUS_EMOJI.open} ${title}`);
   if (opts.project) console.log(`  ${c.dim}project:${c.reset} ${opts.project}`);

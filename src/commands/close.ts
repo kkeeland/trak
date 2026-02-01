@@ -1,6 +1,7 @@
 import { getDb, Task, afterWrite } from '../db.js';
 import { c, STATUS_EMOJI } from '../utils.js';
 import { slingCommand } from './sling.js';
+import { hookTaskClosed } from '../hooks.js';
 
 export interface CloseOptions {
   cost?: string;
@@ -44,6 +45,7 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
   }
 
   afterWrite(db);
+  hookTaskClosed(task);
 
   console.log(`${c.green}✓${c.reset} ${STATUS_EMOJI.done} ${c.dim}${task.id}${c.reset} ${task.title}`);
 

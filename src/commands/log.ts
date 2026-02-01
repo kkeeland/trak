@@ -1,5 +1,6 @@
 import { getDb, Task, afterWrite } from '../db.js';
 import { c } from '../utils.js';
+import { hookTaskLogged } from '../hooks.js';
 
 export interface LogOptions {
   author?: string;
@@ -36,6 +37,7 @@ export function logCommand(id: string, entry: string, opts: LogOptions): void {
   }
 
   afterWrite(db);
+  hookTaskLogged(task, entry, author);
 
   console.log(`${c.green}✓${c.reset} Logged to ${c.dim}${task.id}${c.reset} ${c.cyan}[${author}]${c.reset} ${entry}`);
 }

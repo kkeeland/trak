@@ -1,5 +1,6 @@
 import { getDb, Task, afterWrite } from '../db.js';
 import { c, STATUS_EMOJI } from '../utils.js';
+import { hookTaskAssigned, hookTaskStatusChanged } from '../hooks.js';
 
 export function assignCommand(id: string, agentName: string): void {
   const db = getDb();
@@ -30,6 +31,10 @@ export function assignCommand(id: string, agentName: string): void {
   }
 
   afterWrite(db);
+  hookTaskAssigned(task, agentName);
+  if (oldStatus !== newStatus) {
+    hookTaskStatusChanged(task, oldStatus, newStatus);
+  }
 
   const emoji = STATUS_EMOJI[newStatus] || '?';
   console.log(`${c.green}✓${c.reset} ${c.dim}${task.id}${c.reset} ${emoji} assigned to ${c.bold}${agentName}${c.reset}`);
