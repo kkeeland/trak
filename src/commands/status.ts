@@ -39,7 +39,7 @@ export function statusCommand(id: string, newStatus: string): void {
         `Status: ${oldStatus} → ${newStatus}\nWIP started, snapshot: ${head.slice(0, 8)}`
       );
       const emoji = STATUS_EMOJI[newStatus];
-      afterWrite(db);
+      afterWrite(db, { op: 'update', id: task.id, data: { status: newStatus, wip_snapshot: head } });
       hookTaskStatusChanged(task, oldStatus, newStatus);
       console.log(`${c.green}✓${c.reset} ${c.dim}${task.id}${c.reset} ${emoji} ${oldStatus} → ${c.bold}${newStatus}${c.reset}`);
       console.log(`  ${c.dim}git snapshot:${c.reset} ${head.slice(0, 8)}`);
@@ -52,7 +52,7 @@ export function statusCommand(id: string, newStatus: string): void {
     `Status: ${oldStatus} → ${newStatus}`
   );
 
-  afterWrite(db);
+  afterWrite(db, { op: 'update', id: task.id, data: { status: newStatus } });
   hookTaskStatusChanged(task, oldStatus, newStatus);
 
   const emoji = STATUS_EMOJI[newStatus];

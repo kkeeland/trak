@@ -475,7 +475,7 @@ export function taskFailed(db: Database.Database, taskId: string, reason: string
       `Failed (retry ${newRetryCount}/${maxRetries}): ${reason}\nRe-queued with ${backoffMinutes}m backoff (retry after ${retryAfter})`
     );
 
-    afterWrite(db);
+    afterWrite(db, { op: 'update', id: task.id, data: { status: 'open', retry_count: newRetryCount, retry_after: retryAfter } });
     return { requeued: true, retryCount: newRetryCount, maxRetries };
   } else {
     // Permanently failed
@@ -494,7 +494,7 @@ export function taskFailed(db: Database.Database, taskId: string, reason: string
       `Permanently failed after ${newRetryCount} attempts: ${reason}`
     );
 
-    afterWrite(db);
+    afterWrite(db, { op: 'update', id: task.id, data: { status: 'failed', retry_count: newRetryCount } });
     return { requeued: false, retryCount: newRetryCount, maxRetries };
   }
 }
@@ -523,7 +523,7 @@ export function manualRetry(db: Database.Database, taskId: string, resetCount: b
     `Manually retried${resetCount ? ' (retry count reset)' : ''} — was: ${task.status}${task.last_failure_reason ? `, last failure: ${task.last_failure_reason}` : ''}`
   );
 
-  afterWrite(db);
+  afterWrite(db, { op: 'update', id: task.id, data: { status: 'open', retry_count: newRetryCount } });
   return db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id) as Task;
 }
 

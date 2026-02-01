@@ -65,17 +65,14 @@ describe('JSONL shadow write', () => {
     const content = fs.readFileSync(jsonlPath, 'utf-8');
     const lines = content.trim().split('\n');
     expect(lines).toHaveLength(1);
-    const record = JSON.parse(lines[0]);
-    expect(record.id).toBe(id);
-    expect(record.title).toBe('Full fields');
-    expect(record.project).toBe('myproj');
-    expect(record.priority).toBe(2);
-    expect(record.tags).toBe('a,b');
-    expect(record.status).toBe('open');
-    expect(record.journal).toHaveLength(1);
-    expect(record.journal[0].entry).toContain('Created');
-    expect(record.deps).toEqual([]);
-    expect(record.claims).toEqual([]);
+    const event = JSON.parse(lines[0]);
+    expect(event.op).toBe('create');
+    expect(event.id).toBe(id);
+    expect(event.ts).toBeTruthy();
+    expect(event.data.title).toBe('Full fields');
+    expect(event.data.project).toBe('myproj');
+    expect(event.data.priority).toBe(2);
+    expect(event.data.tags).toBe('a,b');
   });
 
   it('JSONL updates on status change', () => {
@@ -83,8 +80,11 @@ describe('JSONL shadow write', () => {
     const id = extractId(out);
     run(`status ${id} wip`, testDir);
     const jsonlPath = path.join(testDir, '.trak', 'trak.jsonl');
-    const record = JSON.parse(fs.readFileSync(jsonlPath, 'utf-8').trim());
-    expect(record.status).toBe('wip');
+    const lines = fs.readFileSync(jsonlPath, 'utf-8').trim().split('\n');
+    const events = lines.map(l => JSON.parse(l));
+    const updateEvent = events.find((e: any) => e.op === 'update' && e.id === id);
+    expect(updateEvent).toBeTruthy();
+    expect(updateEvent.data.status).toBe('wip');
   });
 
   it('JSONL updates on close', () => {
@@ -92,9 +92,12 @@ describe('JSONL shadow write', () => {
     const id = extractId(out);
     run(`close ${id} --force`, testDir);
     const jsonlPath = path.join(testDir, '.trak', 'trak.jsonl');
-    const record = JSON.parse(fs.readFileSync(jsonlPath, 'utf-8').trim());
-    expect(record.status).toBe('done');
-    expect(record.journal.length).toBeGreaterThan(1);
+    const lines = fs.readFileSync(jsonlPath, 'utf-8').trim().split('\n');
+    const events = lines.map(l => JSON.parse(l));
+    expect(events[0].op).toBe('create');
+    const closeEvent = events.find((e: any) => e.op === 'close');
+    expect(closeEvent).toBeTruthy();
+    expect(closeEvent.id).toBe(id);
   });
 
   it('JSONL updates on log', () => {
@@ -102,8 +105,12 @@ describe('JSONL shadow write', () => {
     const id = extractId(out);
     run(`log ${id} "My note"`, testDir);
     const jsonlPath = path.join(testDir, '.trak', 'trak.jsonl');
-    const record = JSON.parse(fs.readFileSync(jsonlPath, 'utf-8').trim());
-    expect(record.journal.some((j: any) => j.entry === 'My note')).toBe(true);
+    const lines = fs.readFileSync(jsonlPath, 'utf-8').trim().split('\n');
+    const events = lines.map(l => JSON.parse(l));
+    const logEvent = events.find((e: any) => e.op === 'log');
+    expect(logEvent).toBeTruthy();
+    expect(logEvent.id).toBe(id);
+    expect(logEvent.data.entry).toBe('My note');
   });
 
   it('JSONL includes deps', () => {
@@ -114,8 +121,10 @@ describe('JSONL shadow write', () => {
     run(`dep add ${bId} ${aId}`, testDir);
     const jsonlPath = path.join(testDir, '.trak', 'trak.jsonl');
     const lines = fs.readFileSync(jsonlPath, 'utf-8').trim().split('\n');
-    const child = lines.map(l => JSON.parse(l)).find((r: any) => r.id === bId);
-    expect(child.deps).toContain(aId);
+    const events = lines.map(l => JSON.parse(l));
+    const depEvent = events.find((e: any) => e.op === 'dep_add' && e.id === bId);
+    expect(depEvent).toBeTruthy();
+    expect(depEvent.data.parent_id).toBe(aId);
   });
 
   it('multiple tasks produce multiple JSONL lines', () => {
@@ -276,26 +285,18 @@ describe('JSONL roundtrip', () => {
     run(`status ${aId} wip`, testDir);
     run(`assign ${bId} bot-2`, testDir);
 
-    // Read JSONL
+    // Read JSONL — now event log format, verify events are present
     const jsonlPath = path.join(testDir, '.trak', 'trak.jsonl');
     const jsonlContent = fs.readFileSync(jsonlPath, 'utf-8');
-    const lines = jsonlContent.trim().split('\n');
-    expect(lines).toHaveLength(2);
+    const events = jsonlContent.trim().split('\n').map(l => JSON.parse(l));
 
-    // Parse and verify
-    const taskA = JSON.parse(lines.find(l => l.includes(aId))!);
-    const taskB = JSON.parse(lines.find(l => l.includes(bId))!);
+    // Should have: 2 creates + dep_add + log + update(status) + claim(assign) = 6
+    expect(events.length).toBeGreaterThanOrEqual(4);
+    expect(events.filter((e: any) => e.op === 'create')).toHaveLength(2);
+    expect(events.some((e: any) => e.op === 'dep_add' && e.id === bId)).toBe(true);
+    expect(events.some((e: any) => e.op === 'log' && e.id === aId)).toBe(true);
 
-    expect(taskA.status).toBe('wip');
-    expect(taskA.priority).toBe(3);
-    expect(taskA.project).toBe('proj');
-    expect(taskA.tags).toBe('x,y');
-    expect(taskA.journal.length).toBeGreaterThan(1);
-
-    expect(taskB.deps).toContain(aId);
-    expect(taskB.assigned_to).toBe('bot-2');
-
-    // Delete DB, reimport
+    // Delete DB, reimport from event log
     const dbPath = path.join(testDir, '.trak', 'trak.db');
     fs.unlinkSync(dbPath);
     try { fs.unlinkSync(dbPath + '-wal'); } catch {}

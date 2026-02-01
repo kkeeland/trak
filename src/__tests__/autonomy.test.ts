@@ -164,9 +164,10 @@ describe('JSONL roundtrip with autonomy/budget', () => {
     // Check JSONL has the fields
     const jsonlPath = `${cwd}/.trak/trak.jsonl`;
     const content = fs.readFileSync(jsonlPath, 'utf-8');
-    const record = JSON.parse(content.split('\n').find(l => l.includes(id))!);
-    expect(record.autonomy).toBe('auto');
-    expect(record.budget_usd).toBe(5.0);
+    const event = JSON.parse(content.split('\n').find(l => l.includes(id))!);
+    expect(event.op).toBe('create');
+    expect(event.data.autonomy).toBe('auto');
+    expect(event.data.budget_usd).toBe(5.0);
 
     // Import and verify
     runOrThrow('import', cwd);

@@ -111,7 +111,7 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
     db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
       task.id, `Close blocked — no verification. Status set to review (was: ${task.status}). Use --verify to run checks or --force to bypass.`
     );
-    afterWrite(db);
+    afterWrite(db, { op: 'update', id: task.id, data: { status: 'review' } });
     console.log(`${c.yellow}⚠${c.reset}  ${c.dim}${task.id}${c.reset} ${task.title}`);
     console.log(`  ${c.yellow}Close blocked${c.reset} — verification required`);
     console.log(`  ${c.dim}Status set to ${c.bold}review${c.reset}${c.dim} (pending verification)${c.reset}`);
@@ -127,7 +127,7 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
       db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
         task.id, `Close rejected — verification failed. Status reverted to open.`
       );
-      afterWrite(db);
+      afterWrite(db, { op: 'update', id: task.id, data: { status: 'open' } });
       console.log(`\n${c.red}✗ Close rejected${c.reset} — verification failed`);
       console.log(`  ${c.dim}Status reverted to ${c.bold}open${c.reset}`);
       return;
