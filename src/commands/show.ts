@@ -68,8 +68,20 @@ export function showCommand(id: string): void {
     }
   }
   if (task.agent_session) console.log(`  ${c.dim}Session:${c.reset}   ${task.agent_session}`);
-  if (task.tokens_used) console.log(`  ${c.dim}Tokens:${c.reset}    ${task.tokens_used.toLocaleString()}`);
-  if (task.cost_usd) console.log(`  ${c.dim}Cost:${c.reset}      $${task.cost_usd.toFixed(4)}`);
+  if (task.tokens_used) {
+    let tokenStr = task.tokens_used.toLocaleString();
+    if (task.tokens_in || task.tokens_out) {
+      tokenStr += ` (${task.tokens_in.toLocaleString()} in / ${task.tokens_out.toLocaleString()} out)`;
+    }
+    console.log(`  ${c.dim}Tokens:${c.reset}    ${tokenStr}`);
+  }
+  if (task.cost_usd) console.log(`  ${c.dim}Cost:${c.reset}      ${c.yellow}$${task.cost_usd.toFixed(4)}${c.reset}`);
+  if (task.model_used) console.log(`  ${c.dim}Model:${c.reset}     ${c.cyan}${task.model_used}${c.reset}`);
+  if (task.duration_seconds > 0) {
+    const dur = task.duration_seconds;
+    const durStr = dur < 60 ? `${dur.toFixed(0)}s` : dur < 3600 ? `${(dur/60).toFixed(1)}m` : `${(dur/3600).toFixed(1)}h`;
+    console.log(`  ${c.dim}Duration:${c.reset}  ${durStr}`);
+  }
   console.log(`  ${c.dim}Created:${c.reset}   ${task.created_at} (${formatDate(task.created_at)})`);
   console.log(`  ${c.dim}Updated:${c.reset}   ${task.updated_at} (${formatDate(task.updated_at)})`);
 

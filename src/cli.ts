@@ -93,8 +93,10 @@ program
 
 program
   .command('ready')
-  .description('Show unblocked tasks ready for work')
+  .description('Show unblocked tasks ready for work (default: P0-P1 only)')
   .option('-b, --project <project>', 'Filter by project')
+  .option('-p, --priority <level>', 'Minimum priority level (0-3, default: 1 = P0+P1)')
+  .option('-a, --all', 'Show all priorities')
   .action((opts: ReadyOptions) => readyCommand(opts));
 
 program
@@ -131,6 +133,10 @@ program
   .option('-a, --author <name>', 'Author label', 'human')
   .option('--cost <amount>', 'Log cost in USD (additive)')
   .option('--tokens <count>', 'Log token usage (additive)')
+  .option('--tokens-in <count>', 'Log input tokens (additive)')
+  .option('--tokens-out <count>', 'Log output tokens (additive)')
+  .option('--model <name>', 'Model used')
+  .option('--duration <seconds>', 'Duration in seconds (additive)')
   .action((id: string, entry: string, opts: LogOptions) => logCommand(id, entry, opts));
 
 const dep = program
@@ -157,6 +163,10 @@ program
   .argument('<id>', 'Task ID')
   .option('--cost <amount>', 'Log cost in USD (additive)')
   .option('--tokens <count>', 'Log token usage (additive)')
+  .option('--tokens-in <count>', 'Log input tokens (additive)')
+  .option('--tokens-out <count>', 'Log output tokens (additive)')
+  .option('--model <name>', 'Model used for this task')
+  .option('--duration <seconds>', 'Duration in seconds (additive)')
   .option('--verify', 'Run verification checks before closing (build, tests, verify_command)')
   .option('--force', 'Bypass verification gate (human override)')
   .action((id: string, opts: CloseOptions) => closeCommand(id, opts));
@@ -395,6 +405,7 @@ program
   .option('--model <model>', 'Model for spawned agents')
   .option('--timeout <duration>', 'Agent timeout (e.g. 30m, 1h, 900). Overrides task/config defaults')
   .option('-w, --watch', 'Watch mode: poll for newly ready tasks and auto-dispatch')
+  .option('--min-priority <level>', 'Minimum priority to dispatch (0-3, default: 1 = P0+P1)')
   .action((opts: RunOptions) => runCommand(opts));
 
 program

@@ -10,6 +10,7 @@ export interface RunOptions {
   model?: string;
   watch?: boolean;
   timeout?: string;
+  minPriority?: string;
 }
 
 interface ReadyTask {
@@ -23,7 +24,7 @@ interface ReadyTask {
   timeout_seconds: number | null;
 }
 
-function getReadyAutoTasks(project?: string): ReadyTask[] {
+function getReadyAutoTasks(project?: string, minPriority?: number): ReadyTask[] {
   const db = getDb();
   let sql = `
     SELECT t.* FROM tasks t
@@ -43,6 +44,11 @@ function getReadyAutoTasks(project?: string): ReadyTask[] {
     sql += ' AND t.project = ?';
     params.push(project);
   }
+  // Default: only dispatch P0-P1 tasks (priority 0-1), use --min-priority 3 for all
+  // Note: priority 0 = P0 (critical), 3 = P3 (low). Lower number = higher priority.
+  const maxPrio = minPriority ?? 1;
+  sql += ' AND t.priority <= ?';
+  params.push(maxPrio);
   sql += ' ORDER BY t.priority DESC, t.created_at ASC';
   return db.prepare(sql).all(...params) as ReadyTask[];
 }
@@ -133,7 +139,8 @@ async function dispatchTask(
 
 export async function runCommand(opts: RunOptions): Promise<void> {
   const maxAgents = parseInt(opts.maxAgents || '3', 10);
-  const readyTasks = getReadyAutoTasks(opts.project);
+  const minPriority = opts.minPriority !== undefined ? parseInt(opts.minPriority, 10) : undefined;
+  const readyTasks = getReadyAutoTasks(opts.project, minPriority);
 
   if (readyTasks.length === 0) {
     console.log(`${c.dim}No ready auto tasks to run.${c.reset}`);
@@ -225,7 +232,7 @@ export async function runCommand(opts: RunOptions): Promise<void> {
         await new Promise(resolve => setTimeout(resolve, 5000));
         if (!running) break;
 
-        const newReady = getReadyAutoTasks(opts.project)
+        const newReady = getReadyAutoTasks(opts.project, minPriority)
           .filter(t => !alreadyDispatched.has(t.id));
 
         const now = new Date().toLocaleTimeString();
