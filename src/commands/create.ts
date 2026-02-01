@@ -1,4 +1,4 @@
-import { getDb, Task } from '../db.js';
+import { getDb, Task, afterWrite } from '../db.js';
 import { generateId, c, STATUS_EMOJI } from '../utils.js';
 
 export interface CreateOptions {
@@ -43,6 +43,8 @@ export function createCommand(title: string, opts: CreateOptions): void {
     INSERT INTO task_log (task_id, entry, author)
     VALUES (?, ?, ?)
   `).run(id, `Created: ${title}`, opts.session || 'human');
+
+  afterWrite(db);
 
   console.log(`${c.green}✓${c.reset} Created ${c.bold}${id}${c.reset} ${STATUS_EMOJI.open} ${title}`);
   if (opts.project) console.log(`  ${c.dim}project:${c.reset} ${opts.project}`);

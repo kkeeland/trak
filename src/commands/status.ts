@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { getDb, Task } from '../db.js';
+import { getDb, Task, afterWrite } from '../db.js';
 import { c, STATUS_EMOJI, VALID_STATUSES } from '../utils.js';
 
 function getGitHead(): string | null {
@@ -38,6 +38,7 @@ export function statusCommand(id: string, newStatus: string): void {
         `Status: ${oldStatus} → ${newStatus}\nWIP started, snapshot: ${head.slice(0, 8)}`
       );
       const emoji = STATUS_EMOJI[newStatus];
+      afterWrite(db);
       console.log(`${c.green}✓${c.reset} ${c.dim}${task.id}${c.reset} ${emoji} ${oldStatus} → ${c.bold}${newStatus}${c.reset}`);
       console.log(`  ${c.dim}git snapshot:${c.reset} ${head.slice(0, 8)}`);
       return;
@@ -48,6 +49,8 @@ export function statusCommand(id: string, newStatus: string): void {
     task.id,
     `Status: ${oldStatus} → ${newStatus}`
   );
+
+  afterWrite(db);
 
   const emoji = STATUS_EMOJI[newStatus];
   console.log(`${c.green}✓${c.reset} ${c.dim}${task.id}${c.reset} ${emoji} ${oldStatus} → ${c.bold}${newStatus}${c.reset}`);

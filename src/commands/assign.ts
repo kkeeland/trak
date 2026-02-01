@@ -1,4 +1,4 @@
-import { getDb, Task } from '../db.js';
+import { getDb, Task, afterWrite } from '../db.js';
 import { c, STATUS_EMOJI } from '../utils.js';
 
 export function assignCommand(id: string, agentName: string): void {
@@ -28,6 +28,8 @@ export function assignCommand(id: string, agentName: string): void {
       `Status: ${oldStatus} → ${newStatus}`
     );
   }
+
+  afterWrite(db);
 
   const emoji = STATUS_EMOJI[newStatus] || '?';
   console.log(`${c.green}✓${c.reset} ${c.dim}${task.id}${c.reset} ${emoji} assigned to ${c.bold}${agentName}${c.reset}`);

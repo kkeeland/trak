@@ -114,6 +114,7 @@ export function getDb(): Database.Database {
     console.error('Error: No trak database found. Run `trak init` first.');
     process.exit(1);
   }
+  _currentDbPath = dbPath;
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
@@ -200,6 +201,63 @@ export function initDb(global?: boolean): Database.Database {
   `);
 
   return db;
+}
+
+// ─── Config helpers (stored in trak_config table) ──────────
+export function getConfigValue(key: string): any {
+  const db = getDb();
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS trak_config (key TEXT PRIMARY KEY, value TEXT)`);
+    const row = db.prepare('SELECT value FROM trak_config WHERE key = ?').get(key) as { value: string } | undefined;
+    return row ? JSON.parse(row.value) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function setConfigValue(key: string, value: any): void {
+  const db = getDb();
+  db.exec(`CREATE TABLE IF NOT EXISTS trak_config (key TEXT PRIMARY KEY, value TEXT)`);
+  db.prepare('INSERT OR REPLACE INTO trak_config (key, value) VALUES (?, ?)').run(key, JSON.stringify(value));
+}
+
+export function loadConfig(): Record<string, any> {
+  const db = getDb();
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS trak_config (key TEXT PRIMARY KEY, value TEXT)`);
+    const rows = db.prepare('SELECT key, value FROM trak_config').all() as { key: string; value: string }[];
+    const config: Record<string, any> = {};
+    for (const row of rows) {
+      try { config[row.key] = JSON.parse(row.value); } catch { config[row.key] = row.value; }
+    }
+    return config;
+  } catch {
+    return {};
+  }
+}
+
+// Track the current DB path for afterWrite
+let _currentDbPath: string | null = null;
+
+export function getCurrentDbPath(): string | null {
+  return _currentDbPath;
+}
+
+/**
+ * After-write hook: export to JSONL for git sync.
+ * Must be called with the db instance after any mutation.
+ * Dynamically imports jsonl to avoid circular deps.
+ */
+export function afterWrite(db: Database.Database): void {
+  try {
+    const dbPath = _currentDbPath || findDbPath();
+    if (!dbPath) return;
+    // Dynamic require to avoid circular import
+    const jsonl = require('./jsonl.js');
+    jsonl.exportToJsonl(db, dbPath);
+  } catch {
+    // JSONL export is best-effort
+  }
 }
 
 // Helper: calculate heat score for a task

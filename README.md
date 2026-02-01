@@ -3,57 +3,71 @@
 **Task tracking for AI agent swarms.** Assign work to Claude Code, have Cursor verify it, track what it cost — all from the terminal in under 100ms.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/trak.svg)](https://www.npmjs.com/package/trak)
 
 ---
 
-## Why You Need This
+## Status
 
-You're using Claude Code, Cursor, or Codex. Maybe all three. Here's what happens:
+**v0.2.0 — actively developed.** This is real software we use daily, but it's early:
 
-**Monday:** You tell Claude Code to build an auth system. It does great work. Session ends.
+- ✅ Core task tracking, dependencies, epics, heat scoring — all solid
+- ✅ JSONL sync layer — export/import works, git-based sync is functional
+- ⚠️ JSONL conflict resolution is basic (last-write-wins)
+- ⚠️ Cost tracking requires manual logging (`--cost`/`--tokens` flags) — no auto-integration yet
+- ⚠️ No npm package yet — install from git (see below)
+- 🔧 Multi-agent verification chains work but are still evolving
 
-**Tuesday:** New session. Claude has no idea what happened yesterday. You re-explain everything. It starts from scratch, or worse — builds something that conflicts with Monday's work.
+## Why
 
-**Wednesday:** You've got Cursor fixing bugs while Claude Code builds features. They step on each other. Neither knows what the other did. You're the only one holding the full picture, and you're losing it.
+You're running Claude Code, Cursor, or Codex — maybe all three. Every new session starts fresh. There's no shared memory, no coordination, no accountability between agents. You become the bottleneck: the human router between agents that can't talk to each other.
 
-**Thursday:** Your AI bill is $47 this week. On what? Which tasks? Which agent wasted tokens re-doing work? No idea.
-
-**This is the problem.** AI agents are powerful but they have amnesia. Every session starts fresh. There's no shared memory, no coordination, no accountability. You become the bottleneck — the human router between agents that can't talk to each other.
-
-**trak fixes this.**
-
-```
-trak ready                    # What needs doing? (instant, from SQLite)
-trak status auth-fix wip      # Agent claims a task
-trak log auth-fix "Fixed the JWT validation bug, added refresh tokens"
-trak close auth-fix           # Done. Logged. Next agent picks up where this left off.
-```
-
-Every task has a **journal** — a persistent log of what happened, who did it, and what it cost. When a new agent session starts, it runs `trak context myproject` and gets the full story in seconds. No re-explaining. No lost work. No stepping on each other.
-
-**The real unlock:** When you can assign Agent 1 to build something and Agent 2 to verify it — with the full chain tracked — you stop being the router and start being the decision-maker. That's what trak enables.
-
-## The Solution
-
-trak is a CLI-first task tracker built for multi-agent workflows. It's the coordination layer between your AI agents.
-
-```bash
-npx trak init
-trak create "Build auth system" --project api -p 0
-trak assign api-auth claude-code
-trak verify api-auth --pass --agent cursor
-trak cost --project api  # $0.42 across 3 agents
-```
+trak gives your agents a shared task board. Each task has a journal — a persistent log of what happened, who did it, and what it cost. When a new agent session starts, it reads the board and picks up where the last one left off.
 
 ## Quick Start
 
 ```bash
-npm install -g trak    # or: npx trak <command>
-trak init              # initialize in current directory
+# Install from git (no npm package yet)
+git clone https://github.com/kkeeland/trak.git
+cd trak && npm install && npm run build
+npm link  # makes `trak` available globally
+
+# Initialize in your project
+cd ~/my-project
+trak init
 trak setup claude      # auto-configure for Claude Code
-trak create "My first task" --project myapp
-trak board             # see everything at a glance
+
+# Start tracking
+trak create "Build auth system" --project api -p 0
+trak board
+```
+
+## Real Usage
+
+```bash
+# Create tasks with context
+trak create "Fix JWT refresh token race condition" --project api -p 2
+trak create "Add rate limiting middleware" --project api --tags "security,p0"
+
+# See what's ready to work on
+trak ready
+
+# Track progress with journal entries
+trak status trak-a1b wip
+trak log trak-a1b "Found the bug — refresh tokens aren't invalidated on logout"
+trak log trak-a1b "Fixed. Added token blacklist with 15min TTL" --author claude-code
+
+# Close with cost tracking
+trak close trak-a1b --cost 0.42 --tokens 15000
+
+# Multi-agent workflow
+trak assign trak-c3d claude-code
+trak verify trak-c3d --run "npm test"
+trak verify trak-c3d --pass --agent cursor --reason "Code reviewed, looks good"
+
+# See the big picture
+trak board
+trak cost --project api
+trak heat
 ```
 
 ## Global Mode
@@ -70,11 +84,7 @@ DB resolution order:
 2. `.trak/trak.db` in current or parent directories (project-local)
 3. `~/.trak/trak.db` (global)
 
-Use project-local for repo-specific tasks, global for cross-project work.
-
 ## One-Command Integration
-
-trak auto-configures itself for your AI coding tool:
 
 ```bash
 trak setup claude      # → appends to CLAUDE.md
@@ -94,19 +104,16 @@ Tasks auto-sort by urgency. High dependency fan-out + age + recency = hot.
 
 ```bash
 trak heat
-# 🔥 97  trak-a1b  Build auth system     [api]  P0
-# 🔥 62  trak-c3d  Write unit tests      [api]  P1
-# 🔥 34  trak-e5f  Update docs           [api]  P2
 ```
 
 ### 📋 Epics
 
-Group tasks into big-picture containers with progress bars:
+Group tasks into big-picture containers with progress tracking:
 
 ```bash
 trak epic create "v2.0 Launch" --project api
+trak create "Auth system" --epic trak-abc
 trak epic list
-# 📋 trak-abc [████░░░░] 4/10  v2.0 Launch  [api]
 ```
 
 ### 🔗 Dependencies
@@ -118,90 +125,72 @@ trak dep add trak-c3d trak-a1b   # tests depend on auth
 trak ready                        # only shows unblocked work
 ```
 
+### 💰 Cost Tracking
+
+Log costs when closing tasks or adding journal entries:
+
+```bash
+trak close trak-a1b --cost 0.42 --tokens 15000
+trak log trak-a1b "Refactored auth" --cost 0.18 --tokens 8000
+trak cost --project api
+```
+
+Cost and token values are **additive** — each `--cost`/`--tokens` flag adds to the task's running total.
+
 ### 🤖 Multi-Agent Coordination
 
 ```bash
-trak assign <id> claude-code          # Agent 1 builds
-trak verify <id> --pass --agent cursor  # Agent 2 reviews
-trak claims                           # See who's working on what
-trak pipeline <epic-id>               # Verification pipeline view
+trak assign <id> claude-code
+trak verify <id> --run "npm test"
+trak verify <id> --pass --agent cursor
+trak claims
+trak pipeline <epic-id>
 ```
 
 ### ✅ Real Verification
 
-"Verified" isn't a label — trak actually runs your tests.
-
-**Run a command as verification:**
 ```bash
-trak verify auth-fix --run "npm test"                    # runs tests, logs result
-trak verify landing --run "npx next build"               # build must succeed
-trak verify api --run "curl -s localhost:3000/health"     # check endpoint
+trak verify auth-fix --run "npm test"           # runs tests, logs result
+trak verify auth-fix --diff                      # git diff since WIP started
+trak verify auth-fix --checklist "tests,no TS errors"
+trak verify auth-fix --pass --agent cursor
 ```
 
-If exit code 0 → PASSED. Non-zero → FAILED, status reverts to open. Command output, exit code, and duration are logged to the task journal.
+### 🔄 JSONL Sync
 
-**Review what changed since WIP started:**
+trak shadows every write to `.trak/trak.jsonl` — a portable, git-friendly snapshot:
+
 ```bash
-trak status auth-fix wip      # records git HEAD as snapshot
-# ... do work, make commits ...
-trak verify auth-fix --diff    # git diff snapshot..HEAD
+trak sync              # export JSONL + git commit
+trak sync --push       # also push to remote
 ```
 
-**Checklist verification:**
+Other clones can rebuild from the JSONL:
 ```bash
-trak verify auth-fix --checklist "tests pass,no TS errors,no console.logs"
-```
-Each item is logged to the journal as checked.
-
-**Auto-verify everything at once:**
-```bash
-trak verify auth-fix --auto
-```
-Runs the task's `verify_command` (if set), shows diff summary (if WIP snapshot exists), and logs it all.
-
-**Still works manually too:**
-```bash
-trak verify auth-fix --pass --agent cursor --reason "Code reviewed, looks good"
-trak verify auth-fix --fail --reason "Missing error handling"
-```
-
-### 📊 Cost Tracking
-
-Know exactly what each task cost across agents and models.
-
-```bash
-trak cost --project api
+git pull
+trak import .trak/trak.jsonl
 ```
 
 ### 📝 Task Journals
 
-Every task has an append-only log — decisions, findings, progress.
+Every task has an append-only log — decisions, findings, progress:
 
 ```bash
 trak log <id> "Found a race condition in the auth flow"
-trak show <id>   # see full journal
+trak show <id>
 ```
 
 ### 🔍 Retro Vision
 
-Trace any task backwards through its dependency tree. Auto-generate project context for new agents:
-
 ```bash
 trak trace <id>        # full dependency tree
-trak context myapp     # generate CONTEXT.md for new agents
-```
-
-### 🔄 Migration
-
-Coming from Beads? One command:
-
-```bash
-trak import-beads .beads/
+trak context myapp     # generate context doc for new agents
+trak history <id>      # complete timeline
 ```
 
 ## Benchmarks
 
-Measured on a 2GB VPS, Node 22 (median of 5 runs, 500 tasks across 5 projects with ~495 dependencies):
+Measured on a 2GB VPS, Node 22 (median of 5 runs, 500 tasks):
 
 | Operation | Tasks | Time |
 |-----------|-------|------|
@@ -213,119 +202,67 @@ Measured on a 2GB VPS, Node 22 (median of 5 runs, 500 tasks across 5 projects wi
 | `trak show` | 1 | 0.1ms |
 | `trak close` | 1 | 0.2ms |
 
-All operations under 25ms. SQLite doesn't need a network.
-
 Run them yourself: `npm run bench`
 
 ## Tests
 
-76 tests covering every command, edge cases, and error handling.
+93 tests covering every command, edge cases, sync, and error handling:
 
 ```bash
 npm test
 ```
 
-## FAQ
+## Current Limitations
 
-**"This is just a SQLite wrapper around a todo list."**
-
-Yes. And SQLite is just a file with SQL. Simplicity is the feature. Every operation under 25ms, zero config, works offline, no account needed. Try that with Linear.
-
-**"Why not just use GitHub Issues?"**
-
-GitHub Issues requires internet, has API rate limits (5000/hr), takes 200-800ms per call, and has zero concept of which AI agent is working on what. trak is local SQLite — your agents read/write task state without burning API calls or tokens re-explaining context.
-
-**"The verification chain is just a status label."**
-
-Not anymore. `trak verify --run "npm test"` actually executes your test suite and records pass/fail. `trak verify --diff` shows exactly what changed. Verification is real, not ceremonial.
-
-**"Cost tracking is manual."**
-
-Today, yes — agents log their own cost via `trak log`. Auto-detection hooks for Clawdbot are shipping in v0.2. For Claude Code and Cursor, there's no public API for token usage yet. When there is, trak will capture it. PRs welcome.
-
-**"No tests?"**
-
-[Test suite](src/). 76 tests covering every command, edge cases, and error handling.
-
-**"Another npm package with native deps?"**
-
-better-sqlite3 uses native bindings for speed. If node-gyp is a problem, we're evaluating sql.js (WASM) as a fallback. Long-term: standalone binary via pkg or Bun.
-
-**"Cool for one person, useless for teams."**
-
-Local-first is a design choice, not a limitation. Team sync via git is on the roadmap. But the 90% use case today is one developer running multiple AI agents — and for that, local SQLite is 10x faster than any cloud API.
-
-**"Why not just use Beads?"**
-
-Beads is great — we used it before building trak. Here's what's different:
-
-| | trak | Beads |
-|---|---|---|
-| Multi-agent coordination | ✅ assign, verify, claim | ❌ single-agent |
-| Verification chains | ✅ --run, --diff | ❌ |
-| Cost tracking | ✅ per task per agent | ❌ |
-| One-command setup | ✅ `trak setup claude` | ❌ manual |
-| Heat score | ✅ auto-priority | ❌ manual only |
-| Migration | ✅ `trak import-beads` | — |
+- **JSONL conflict resolution is last-write-wins.** If two agents write simultaneously, the last sync wins. Fine for single-developer multi-agent workflows; not ready for team use.
+- **Cost tracking is manual.** Agents must pass `--cost`/`--tokens` explicitly. Auto-detection hooks are planned but depend on upstream APIs exposing token usage.
+- **Not on npm yet.** Install from git. The package will publish as `@kkeeland/trak` when ready.
+- **SQLite + native deps.** `better-sqlite3` requires native compilation. If `node-gyp` is a problem, a WASM fallback is being evaluated.
 
 ## All Commands
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `init` | Initialize trak in current directory | `trak init` |
-| `create` | Create a new task | `trak create "title" --project api -p 1` |
-| `list` | List tasks with filters | `trak list --project api --status wip` |
-| `ready` | Show unblocked tasks ready for work | `trak ready` |
-| `board` | Board view grouped by project | `trak board` |
-| `show` | Show full task detail + journal | `trak show trak-abc` |
-| `status` | Change task status | `trak status trak-abc wip` |
-| `log` | Append entry to task journal | `trak log trak-abc "progress note"` |
-| `close` | Mark task as done | `trak close trak-abc` |
-| `heat` | Show tasks by heat score | `trak heat` |
-| `cost` | Cost tracking by project | `trak cost --project api` |
-| `dep add` | Add dependency | `trak dep add child parent` |
-| `dep rm` | Remove dependency | `trak dep rm child parent` |
-| `epic create` | Create an epic | `trak epic create "v2" --project api` |
-| `epic list` | List all epics with progress | `trak epic list` |
-| `epic show` | Show epic detail | `trak epic show trak-abc` |
-| `assign` | Assign task to an agent | `trak assign trak-abc claude-code` |
-| `verify` | Record verification result | `trak verify trak-abc --pass --agent cursor` |
-| `claim` | Claim a task for an agent | `trak claim trak-abc my-agent` |
-| `claims` | Show all active claims | `trak claims` |
-| `pipeline` | Verification pipeline for an epic | `trak pipeline trak-abc` |
-| `stats` | Agent performance stats | `trak stats` |
-| `trace` | Full dependency tree | `trak trace trak-abc` |
-| `context` | Generate CONTEXT.md for a project | `trak context myapp` |
-| `history` | Task history timeline | `trak history trak-abc` |
-| `digest` | What changed in the last 24 hours | `trak digest` |
-| `stale` | Tasks with no recent activity | `trak stale` |
-| `setup` | Configure AI tool integration | `trak setup claude` |
-| `import-beads` | Import from beads workspace | `trak import-beads .beads/` |
-| `export` | Dump all data to JSON | `trak export` |
-| `search` | Search tasks by keyword | `trak search <query>` |
-| `import` | Import tasks from JSON | `trak import tasks.json` |
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize trak database |
+| `create` | Create a new task |
+| `list` / `ls` | List tasks with filters |
+| `ready` | Show unblocked tasks |
+| `board` | Board view by project |
+| `show` | Full task detail + journal |
+| `status` | Change task status |
+| `log` | Append journal entry (supports `--cost`, `--tokens`) |
+| `close` | Mark task done (supports `--cost`, `--tokens`) |
+| `heat` | Tasks by heat score |
+| `cost` | Cost tracking by project |
+| `dep add/rm` | Manage dependencies |
+| `epic create/list/show` | Manage epics |
+| `assign` | Assign task to agent |
+| `verify` | Verify task (--run, --diff, --pass/--fail) |
+| `claim/claims` | Claim tasks for agents |
+| `pipeline` | Verification pipeline |
+| `stats` | Agent performance stats |
+| `trace` | Dependency tree |
+| `context` | Generate project context |
+| `history` | Task timeline |
+| `digest` | Last 24h changes |
+| `stale` | Inactive tasks |
+| `search` | Full-text search |
+| `setup` | Configure AI tool integration |
+| `sync` | Export JSONL + git commit |
+| `config` | Manage trak configuration |
+| `export/import` | JSON/JSONL data transfer |
 
 ## Philosophy
 
 - **Zero friction** — if it takes more than 2 seconds, it's too slow
-- **Auto-track** — the best task tracker is invisible
 - **Local-first** — SQLite, no accounts, no API keys, no network
 - **AI-native** — built for agents first, humans second
 
 ## Architecture
 
-- **Storage:** SQLite via better-sqlite3 (single file, `.trak/trak.db`)
-- **Performance:** <100ms for any operation on 500+ tasks
-- **Zero dependencies on external services** — works offline, works in CI, works anywhere Node runs
-
-## Experimental Features
-
-The following are shipped but evolving based on real-world usage:
-
-- Multi-agent verification chains (assign, verify, claim)
-- Pipeline views
-- Agent performance stats
-- Context generation
+- **Storage:** SQLite via better-sqlite3 (`.trak/trak.db`)
+- **Sync:** JSONL shadow writes (`.trak/trak.jsonl`) — git-friendly
+- **Performance:** <25ms for any operation on 500+ tasks
 
 ## Contributing
 

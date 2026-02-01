@@ -1,4 +1,4 @@
-import { getDb, Task } from '../db.js';
+import { getDb, Task, afterWrite } from '../db.js';
 import { c } from '../utils.js';
 
 function resolveTask(db: ReturnType<typeof getDb>, id: string): Task {
@@ -33,6 +33,8 @@ export function depAddCommand(childId: string, parentId: string): void {
   db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
     child.id, `Added dependency on ${parent.id} (${parent.title})`
   );
+
+  afterWrite(db);
 
   console.log(`${c.green}✓${c.reset} ${c.dim}${child.id}${c.reset} depends on ${c.dim}${parent.id}${c.reset}`);
   console.log(`  ${child.title} → ${parent.title}`);

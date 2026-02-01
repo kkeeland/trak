@@ -1,6 +1,8 @@
 node_modules/
 dist/
-.trak/
+.trak/trak.db
+.trak/*.db-wal
+.trak/*.db-shm
 *.js.map
 *.d.ts
 !src/**

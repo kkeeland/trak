@@ -1,6 +1,9 @@
 {
-  "name": "trak",
-  "version": "0.1.0",
+  "name": "@kkeeland/trak",
+  "version": "0.2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Task tracking for AI agent swarms",
   "main": "dist/cli.js",
   "bin": {

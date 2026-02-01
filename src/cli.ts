@@ -11,7 +11,7 @@ import { showCommand } from './commands/show.js';
 import { statusCommand } from './commands/status.js';
 import { logCommand, LogOptions } from './commands/log.js';
 import { depAddCommand, depRmCommand } from './commands/dep.js';
-import { closeCommand } from './commands/close.js';
+import { closeCommand, CloseOptions } from './commands/close.js';
 import { digestCommand } from './commands/digest.js';
 import { staleCommand } from './commands/stale.js';
 import { costCommand, CostOptions } from './commands/cost.js';
@@ -20,6 +20,8 @@ import { exportCommand } from './commands/export.js';
 import { importCommand } from './commands/import.js';
 import { importBeadsCommand } from './commands/import-beads.js';
 import { setupCommand } from './commands/setup.js';
+import { configGetCommand, configSetCommand, configListCommand } from './commands/config.js';
+import { syncCommand, SyncOptions } from './commands/sync.js';
 import { traceCommand, TraceOptions } from './commands/trace.js';
 import { historyCommand } from './commands/history.js';
 import { contextCommand } from './commands/context.js';
@@ -37,7 +39,7 @@ const program = new Command();
 program
   .name('trak')
   .description('AI-native task tracker — tasks are conversations, not tickets')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('init')
@@ -101,6 +103,8 @@ program
   .argument('<id>', 'Task ID')
   .argument('<entry>', 'Journal entry text')
   .option('-a, --author <name>', 'Author label', 'human')
+  .option('--cost <amount>', 'Log cost in USD (additive)')
+  .option('--tokens <count>', 'Log token usage (additive)')
   .action((id: string, entry: string, opts: LogOptions) => logCommand(id, entry, opts));
 
 const dep = program
@@ -125,7 +129,9 @@ program
   .command('close')
   .description('Mark task as done')
   .argument('<id>', 'Task ID')
-  .action((id: string) => closeCommand(id));
+  .option('--cost <amount>', 'Log cost in USD (additive)')
+  .option('--tokens <count>', 'Log token usage (additive)')
+  .action((id: string, opts: CloseOptions) => closeCommand(id, opts));
 
 program
   .command('digest')
@@ -157,13 +163,13 @@ program
 
 program
   .command('import')
-  .description('Import tasks from JSON file')
-  .argument('<file>', 'JSON file path')
-  .action((file: string) => importCommand(file));
+  .description('Import tasks from JSON/JSONL file')
+  .argument('[file]', 'JSON/JSONL file path (defaults to .trak/trak.jsonl)')
+  .action((file?: string) => importCommand(file));
 
 program
-  .command('import-beads')
-  .description('Import tasks from beads JSONL workspace')
+  .command('import-beads', { hidden: true })
+  .description('Import tasks from beads JSONL workspace (deprecated — use scripts/migrate-from-beads.ts)')
   .argument('<path>', 'Path to beads workspace (.beads/ dir) or issues.jsonl file')
   .action((path: string) => importBeadsCommand(path));
 
@@ -287,5 +293,35 @@ program
   .option('-b, --project <project>', 'Scope to project')
   .option('-a, --all', 'Include done/archived')
   .action((query: string, opts: SearchOptions) => searchCommand(query, opts));
+
+// Config commands
+const config = program
+  .command('config')
+  .description('Manage trak configuration');
+
+config
+  .command('get')
+  .description('Get a config value')
+  .argument('<key>', 'Config key')
+  .action((key: string) => configGetCommand(key));
+
+config
+  .command('set')
+  .description('Set a config value')
+  .argument('<key>', 'Config key')
+  .argument('<value>', 'Config value')
+  .action((key: string, value: string) => configSetCommand(key, value));
+
+config
+  .command('list')
+  .description('List all config')
+  .action(() => configListCommand());
+
+// Sync command
+program
+  .command('sync')
+  .description('Export JSONL and commit to git')
+  .option('--push', 'Also push to remote')
+  .action((opts: SyncOptions) => syncCommand(opts));
 
 program.parse();

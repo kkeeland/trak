@@ -1,5 +1,7 @@
 import fs from 'fs';
+import path from 'path';
 import { getDb, Task, LogEntry, Dependency } from '../db.js';
+import { parseJsonl, importFromJsonl } from '../jsonl.js';
 import { c } from '../utils.js';
 
 interface ImportData {
@@ -9,10 +11,31 @@ interface ImportData {
   logs: LogEntry[];
 }
 
-export function importCommand(file: string): void {
+export function importCommand(file?: string): void {
+  // Default to .trak/trak.jsonl if no file specified
+  if (!file) {
+    const defaultJsonl = path.join(process.cwd(), '.trak', 'trak.jsonl');
+    if (fs.existsSync(defaultJsonl)) {
+      file = defaultJsonl;
+    } else {
+      console.error(`${c.red}No file specified and no .trak/trak.jsonl found${c.reset}`);
+      process.exit(1);
+    }
+  }
+
   if (!fs.existsSync(file)) {
     console.error(`${c.red}File not found: ${file}${c.reset}`);
     process.exit(1);
+  }
+
+  // Detect JSONL vs JSON
+  if (file.endsWith('.jsonl')) {
+    const records = parseJsonl(file);
+    const db = getDb();
+    const result = importFromJsonl(db, records);
+    console.log(`${c.green}✓${c.reset} Imported from ${file}`);
+    console.log(`  ${result.tasks} tasks, ${result.deps} dependencies, ${result.logs} log entries`);
+    return;
   }
 
   const raw = fs.readFileSync(file, 'utf-8');

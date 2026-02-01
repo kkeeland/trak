@@ -11,11 +11,13 @@ function tmpDir(): string {
   return dir;
 }
 
+const TEST_ENV = { ...process.env, NODE_ENV: 'test', NO_COLOR: '1', HOME: '/tmp/trak-no-home' };
+
 function run(cmd: string, cwd: string): string {
   try {
     return execSync(`node ${TRAK_BIN} ${cmd}`, {
       cwd,
-      env: { ...process.env, NODE_ENV: 'test', NO_COLOR: '1' },
+      env: TEST_ENV,
       encoding: 'utf-8',
       timeout: 5000,
     });
@@ -28,7 +30,7 @@ function run(cmd: string, cwd: string): string {
 function runOrThrow(cmd: string, cwd: string): string {
   return execSync(`node ${TRAK_BIN} ${cmd}`, {
     cwd,
-    env: { ...process.env, NODE_ENV: 'test', NO_COLOR: '1' },
+    env: TEST_ENV,
     encoding: 'utf-8',
     timeout: 5000,
   });
