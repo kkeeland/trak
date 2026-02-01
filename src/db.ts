@@ -14,17 +14,32 @@ export interface Task {
   project: string;
   blocked_by: string;
   parent_id: string | null;
+  epic_id: string | null;
+  is_epic: number;
   created_at: string;
   updated_at: string;
   agent_session: string;
   tokens_used: number;
   cost_usd: number;
   tags: string;
+  assigned_to: string;
+  verified_by: string;
+  verification_status: string;
 }
 
 export interface Dependency {
   child_id: string;
   parent_id: string;
+}
+
+export interface TaskClaim {
+  id: number;
+  task_id: string;
+  agent: string;
+  model: string;
+  status: string;
+  claimed_at: string;
+  released_at: string | null;
 }
 
 export interface LogEntry {
@@ -92,7 +107,13 @@ export function initDb(): Database.Database {
       tokens_used INTEGER DEFAULT 0,
       cost_usd REAL DEFAULT 0.0,
       tags TEXT DEFAULT '',
-      FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE SET NULL
+      epic_id TEXT,
+      is_epic INTEGER DEFAULT 0,
+      assigned_to TEXT DEFAULT '',
+      verified_by TEXT DEFAULT '',
+      verification_status TEXT DEFAULT '',
+      FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE SET NULL,
+      FOREIGN KEY (epic_id) REFERENCES tasks(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS dependencies (
@@ -111,6 +132,21 @@ export function initDb(): Database.Database {
       author TEXT DEFAULT 'human',
       FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS task_claims (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL,
+      agent TEXT NOT NULL,
+      model TEXT DEFAULT '',
+      status TEXT DEFAULT 'claimed',
+      claimed_at TEXT DEFAULT (datetime('now')),
+      released_at TEXT,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    -- Migrations for existing databases
+    -- These are no-ops if columns already exist
+    CREATE INDEX IF NOT EXISTS idx_tasks_epic_id ON tasks(epic_id);
 
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);

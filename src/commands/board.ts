@@ -32,7 +32,6 @@ export function boardCommand(project?: string): void {
     const bc = getProjectColor(projectName);
     console.log(`\n${bc}${c.bold}━━━ ${projectName.toUpperCase()} ━━━${c.reset} ${c.dim}(${projectTasks.length})${c.reset}`);
 
-    // Group by status within project
     const statusOrder = ['wip', 'blocked', 'review', 'open'];
     for (const status of statusOrder) {
       const statusTasks = projectTasks.filter(t => t.status === status);
@@ -44,8 +43,10 @@ export function boardCommand(project?: string): void {
 
       for (const t of statusTasks) {
         const prio = priorityLabel(t.priority);
-        const title = truncate(t.title, 45);
-        console.log(`    ${c.dim}${t.id}${c.reset} ${prio} ${title}`);
+        const title = truncate(t.title, 40);
+        const agent = t.assigned_to ? ` ${c.cyan}→ ${t.assigned_to}${c.reset}` : '';
+        const vStatus = t.verification_status ? ` ${c.dim}(verified: ${t.verification_status})${c.reset}` : '';
+        console.log(`    ${c.dim}${t.id}${c.reset} ${prio} ${title}${agent}${vStatus}`);
         if (t.blocked_by) {
           console.log(`      ${c.red}↳ ${t.blocked_by}${c.reset}`);
         }

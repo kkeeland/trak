@@ -8,6 +8,8 @@ export interface CreateOptions {
   parent?: string;
   tags?: string;
   session?: string;
+  epic?: string;
+  isEpic?: boolean;
 }
 
 export function createCommand(title: string, opts: CreateOptions): void {
@@ -21,8 +23,8 @@ export function createCommand(title: string, opts: CreateOptions): void {
   }
 
   db.prepare(`
-    INSERT INTO tasks (id, title, description, priority, project, parent_id, tags, agent_session)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, title, description, priority, project, parent_id, tags, agent_session, epic_id, is_epic)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     title,
@@ -31,7 +33,9 @@ export function createCommand(title: string, opts: CreateOptions): void {
     opts.project || '',
     opts.parent || null,
     opts.tags || '',
-    opts.session || ''
+    opts.session || '',
+    opts.epic || null,
+    opts.isEpic ? 1 : 0
   );
 
   // Add creation log entry

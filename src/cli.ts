@@ -19,6 +19,13 @@ import { exportCommand } from './commands/export.js';
 import { importCommand } from './commands/import.js';
 import { importBeadsCommand } from './commands/import-beads.js';
 import { setupCommand } from './commands/setup.js';
+import { epicCreateCommand, epicListCommand, epicShowCommand, EpicListOptions } from './commands/epic.js';
+import { assignCommand } from './commands/assign.js';
+import { verifyCommand, VerifyOptions } from './commands/verify.js';
+import { claimCommand, ClaimOptions } from './commands/claim.js';
+import { claimsCommand, ClaimsOptions } from './commands/claims.js';
+import { pipelineCommand } from './commands/pipeline.js';
+import { statsCommand, StatsOptions } from './commands/stats.js';
 
 const program = new Command();
 
@@ -40,6 +47,7 @@ program
   .option('-p, --priority <n>', 'Priority 0-3', '1')
   .option('-d, --description <text>', 'Task description')
   .option('--parent <id>', 'Parent task ID (for subtasks)')
+  .option('--epic <id>', 'Parent epic ID')
   .option('-t, --tags <tags>', 'Comma-separated tags')
   .option('-s, --session <label>', 'Agent session label')
   .action((title: string, opts: CreateOptions) => createCommand(title, opts));
@@ -51,6 +59,7 @@ program
   .option('-b, --project <project>', 'Filter by project')
   .option('--status <status>', 'Filter by status')
   .option('-t, --tags <tags>', 'Filter by tag')
+  .option('--epic <id>', 'Filter by epic')
   .option('-v, --verbose', 'Show details')
   .option('-a, --all', 'Include done/archived')
   .action((opts: ListOptions) => listCommand(opts));
@@ -158,5 +167,80 @@ program
   .argument('[tool]', 'Tool to configure: claude, cursor, clawdbot, codex, aider, generic')
   .option('-l, --list', 'Show all supported tools')
   .action((tool?: string, opts?: { list?: boolean }) => setupCommand(tool, opts));
+
+// Epic commands
+const epic = program
+  .command('epic')
+  .description('Manage epics (large task groups)');
+
+epic
+  .command('create')
+  .description('Create a new epic')
+  .argument('<title>', 'Epic title')
+  .option('-b, --project <project>', 'Project grouping')
+  .option('-p, --priority <n>', 'Priority 0-3', '1')
+  .option('-d, --description <text>', 'Epic description')
+  .option('-t, --tags <tags>', 'Comma-separated tags')
+  .option('-s, --session <label>', 'Agent session label')
+  .action((title: string, opts: CreateOptions) => epicCreateCommand(title, opts));
+
+epic
+  .command('list')
+  .alias('ls')
+  .description('List all epics')
+  .option('-b, --project <project>', 'Filter by project')
+  .action((opts: EpicListOptions) => epicListCommand(opts));
+
+epic
+  .command('show')
+  .description('Show epic detail with progress')
+  .argument('<id>', 'Epic ID')
+  .action((id: string) => epicShowCommand(id));
+
+// Multi-agent coordination commands
+program
+  .command('assign')
+  .description('Assign a task to an agent')
+  .argument('<id>', 'Task ID')
+  .argument('<agent>', 'Agent name')
+  .action((id: string, agent: string) => assignCommand(id, agent));
+
+program
+  .command('verify')
+  .description('Record verification result for a task')
+  .argument('<id>', 'Task ID')
+  .option('--pass', 'Mark verification as passed')
+  .option('--fail', 'Mark verification as failed')
+  .option('--agent <name>', 'Verifying agent name', 'human')
+  .option('--reason <text>', 'Verification reasoning')
+  .action((id: string, opts: VerifyOptions) => verifyCommand(id, opts));
+
+program
+  .command('claim')
+  .description('Claim a task for an agent')
+  .argument('<id>', 'Task ID')
+  .option('--agent <name>', 'Agent name')
+  .option('--model <model>', 'Model name')
+  .option('--release', 'Release current claim')
+  .action((id: string, opts: ClaimOptions) => claimCommand(id, opts));
+
+program
+  .command('claims')
+  .description('Show all active claims')
+  .option('--agent <name>', 'Filter by agent')
+  .action((opts: ClaimsOptions) => claimsCommand(opts));
+
+program
+  .command('pipeline')
+  .description('Show verification pipeline for an epic')
+  .argument('<epic-id>', 'Epic task ID')
+  .action((epicId: string) => pipelineCommand(epicId));
+
+program
+  .command('stats')
+  .description('Agent performance stats')
+  .option('--agent <name>', 'Filter by agent')
+  .option('--project <project>', 'Filter by project')
+  .action((opts: StatsOptions) => statsCommand(opts));
 
 program.parse();

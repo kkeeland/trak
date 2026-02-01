@@ -7,6 +7,7 @@ export interface ListOptions {
   tags?: string;
   verbose?: boolean;
   all?: boolean;
+  epic?: string;
 }
 
 export function listCommand(opts: ListOptions): void {
@@ -25,6 +26,15 @@ export function listCommand(opts: ListOptions): void {
   if (opts.tags) {
     sql += ' AND tags LIKE ?';
     params.push(`%${opts.tags}%`);
+  }
+  if (opts.epic) {
+    const epic = db.prepare('SELECT id FROM tasks WHERE (id = ? OR id LIKE ?) AND is_epic = 1').get(opts.epic, `%${opts.epic}%`) as { id: string } | undefined;
+    if (!epic) {
+      console.error(`Epic not found: ${opts.epic}`);
+      process.exit(1);
+    }
+    sql += ' AND epic_id = ?';
+    params.push(epic.id);
   }
   if (!opts.all) {
     sql += " AND status NOT IN ('done', 'archived')";
@@ -49,13 +59,17 @@ export function listCommand(opts: ListOptions): void {
     const prio = priorityLabel(t.priority);
     const title = truncate(t.title, 50);
     const age = formatDate(t.updated_at);
+    const epicTag = t.is_epic ? '📋 ' : '';
+    const agent = t.assigned_to ? ` ${c.cyan}→ ${t.assigned_to}${c.reset}` : '';
 
-    console.log(`  ${emoji} ${id} ${prio} ${projectTag}${sc}${title}${c.reset} ${c.dim}${age}${c.reset}`);
+    console.log(`  ${emoji} ${id} ${prio} ${epicTag}${projectTag}${sc}${title}${c.reset}${agent} ${c.dim}${age}${c.reset}`);
 
     if (opts.verbose) {
       if (t.description) console.log(`    ${c.dim}${truncate(t.description, 70)}${c.reset}`);
       if (t.blocked_by) console.log(`    ${c.red}blocked by: ${t.blocked_by}${c.reset}`);
       if (t.tags) console.log(`    ${c.dim}tags: ${t.tags}${c.reset}`);
+      if (t.epic_id) console.log(`    ${c.dim}epic: ${t.epic_id}${c.reset}`);
+      if (t.verification_status) console.log(`    ${c.dim}verified: ${t.verification_status}${c.reset}`);
     }
   }
 }

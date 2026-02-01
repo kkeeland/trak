@@ -1,4 +1,4 @@
-import { getDb, Task, LogEntry, Dependency, calculateHeat } from '../db.js';
+import { getDb, Task, LogEntry, Dependency, TaskClaim, calculateHeat } from '../db.js';
 import { c, STATUS_EMOJI, statusColor, priorityLabel, formatDate, heatBar } from '../utils.js';
 
 export function showCommand(id: string): void {
@@ -14,7 +14,8 @@ export function showCommand(id: string): void {
   const emoji = STATUS_EMOJI[task.status] || '?';
   const sc = statusColor(task.status);
 
-  console.log(`\n${c.bold}${task.id}${c.reset} ${emoji} ${sc}${task.status.toUpperCase()}${c.reset}`);
+  const epicBadge = task.is_epic ? ' 📋 EPIC' : '';
+  console.log(`\n${c.bold}${task.id}${c.reset} ${emoji} ${sc}${task.status.toUpperCase()}${c.reset}${epicBadge}`);
   console.log(`${c.bold}${task.title}${c.reset}`);
   console.log(`${'─'.repeat(60)}`);
 
@@ -26,6 +27,13 @@ export function showCommand(id: string): void {
   if (task.tags) console.log(`  ${c.dim}Tags:${c.reset}      ${task.tags}`);
   if (task.blocked_by) console.log(`  ${c.dim}Blocked:${c.reset}   ${c.red}${task.blocked_by}${c.reset}`);
   if (task.parent_id) console.log(`  ${c.dim}Parent:${c.reset}    ${task.parent_id}`);
+  if (task.epic_id) console.log(`  ${c.dim}Epic:${c.reset}      ${task.epic_id}`);
+  if (task.assigned_to) console.log(`  ${c.dim}Assigned:${c.reset}  ${c.bold}${task.assigned_to}${c.reset}`);
+  if (task.verified_by) console.log(`  ${c.dim}Verified:${c.reset}  ${c.green}${task.verified_by}${c.reset}`);
+  if (task.verification_status) {
+    const vsColor = task.verification_status === 'passed' ? c.green : task.verification_status === 'failed' ? c.red : c.yellow;
+    console.log(`  ${c.dim}Verify:${c.reset}    ${vsColor}${task.verification_status}${c.reset}`);
+  }
   if (task.agent_session) console.log(`  ${c.dim}Session:${c.reset}   ${task.agent_session}`);
   if (task.tokens_used) console.log(`  ${c.dim}Tokens:${c.reset}    ${task.tokens_used.toLocaleString()}`);
   if (task.cost_usd) console.log(`  ${c.dim}Cost:${c.reset}      $${task.cost_usd.toFixed(4)}`);
@@ -58,13 +66,37 @@ export function showCommand(id: string): void {
     }
   }
 
-  // Subtasks
+  // Subtasks + epic children
   const subtasks = db.prepare("SELECT * FROM tasks WHERE parent_id = ? ORDER BY status, priority DESC").all(task.id) as Task[];
-  if (subtasks.length > 0) {
-    console.log(`\n  ${c.dim}Subtasks:${c.reset}`);
-    for (const st of subtasks) {
+  const epicChildren = task.is_epic
+    ? db.prepare("SELECT * FROM tasks WHERE epic_id = ? ORDER BY status, priority DESC").all(task.id) as Task[]
+    : [];
+
+  const allChildren = [...subtasks];
+  const subtaskIds = new Set(subtasks.map(s => s.id));
+  for (const ec of epicChildren) {
+    if (!subtaskIds.has(ec.id)) allChildren.push(ec);
+  }
+
+  if (allChildren.length > 0) {
+    console.log(`\n  ${c.dim}${task.is_epic ? 'Epic Tasks' : 'Subtasks'}:${c.reset}`);
+    for (const st of allChildren) {
       const e = STATUS_EMOJI[st.status];
-      console.log(`    ${e} ${c.dim}${st.id}${c.reset} ${st.title}`);
+      const agent = st.assigned_to ? ` ${c.cyan}→ ${st.assigned_to}${c.reset}` : '';
+      console.log(`    ${e} ${c.dim}${st.id}${c.reset} ${st.title}${agent}`);
+    }
+  }
+
+  // Claims history
+  const claims = db.prepare('SELECT * FROM task_claims WHERE task_id = ? ORDER BY claimed_at ASC').all(task.id) as TaskClaim[];
+  if (claims.length > 0) {
+    console.log(`\n  ${c.bold}Claims History${c.reset} (${claims.length})`);
+    console.log(`  ${'─'.repeat(56)}`);
+    for (const claim of claims) {
+      const statusIcon = claim.status === 'claimed' ? '🟢' : claim.status === 'completed' ? '✅' : '⬜';
+      const model = claim.model ? ` ${c.dim}(${claim.model})${c.reset}` : '';
+      const duration = claim.released_at ? ` → ${formatDate(claim.released_at)}` : ' (active)';
+      console.log(`  ${statusIcon} ${c.bold}${claim.agent}${c.reset}${model} ${c.dim}${formatDate(claim.claimed_at)}${duration}${c.reset}`);
     }
   }
 
