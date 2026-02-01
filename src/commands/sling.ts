@@ -1,16 +1,61 @@
 import { getDb, Task, afterWrite } from '../db.js';
-import { c, STATUS_EMOJI } from '../utils.js';
+import { c, STATUS_EMOJI, generateId } from '../utils.js';
 
 export interface SlingOptions {
   execute?: boolean;  // Actually spawn the agent (future)
   json?: boolean;     // Output JSON for piping
   project?: string;   // Filter by project when auto-picking
+  goal?: string;      // Create a single task from a goal and dispatch it
 }
 
 export function slingCommand(taskId?: string, opts?: SlingOptions): void {
   const db = getDb();
 
   let task: Task | undefined;
+
+  // --goal mode: create a single task from the goal and dispatch it
+  if (opts?.goal) {
+    const id = generateId();
+    const project = opts.project || '';
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, priority, project, autonomy, tags)
+      VALUES (?, ?, ?, ?, ?, 'auto', 'auto,goal')
+    `).run(id, opts.goal, opts.goal, 1, project);
+
+    db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
+      id, `Created via trak sling --goal`
+    );
+
+    // Claim it
+    db.prepare("UPDATE tasks SET status = 'wip', assigned_to = 'agent', updated_at = datetime('now') WHERE id = ?").run(id);
+    db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
+      id, 'Slung to agent for autonomous execution'
+    );
+    afterWrite(db);
+
+    const payload = {
+      dispatched: true,
+      task: {
+        id,
+        title: opts.goal,
+        description: opts.goal,
+        project,
+        priority: 1,
+        tags: 'auto,goal',
+        convoy: null,
+      },
+      instruction: `Complete this goal: "${opts.goal}"\n\nWhen done, run: trak close ${id}\nIf you need to log progress: trak log ${id} "your update"`,
+    };
+
+    if (opts.json) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else {
+      console.log(`${c.green}✓${c.reset} ⚡ Created & slung ${c.bold}${id}${c.reset} — ${opts.goal}`);
+      console.log(`  ${c.dim}Status: wip | Assigned: agent${c.reset}`);
+      console.log(`  ${c.dim}Instruction: Complete and run 'trak close ${id}'${c.reset}`);
+    }
+    return;
+  }
 
   if (taskId) {
     // Resolve task by ID

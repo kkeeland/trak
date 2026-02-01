@@ -5,143 +5,89 @@ import { ensureConvoyTable, convoyCreateCommand } from './convoy.js';
 export interface DoOptions {
   project?: string;
   ai?: boolean;
+  chain?: boolean;
 }
 
-interface DecomposedStep {
-  title: string;
-  description: string;
-  inputs: string;
-  outputs: string;
-}
-
-interface DecompositionTemplate {
+interface TemplateMatch {
   pattern: RegExp;
-  steps: DecomposedStep[];
+  tasks: string[];
 }
 
-const TEMPLATES: DecompositionTemplate[] = [
+const TEMPLATES: TemplateMatch[] = [
   {
     pattern: /landing\s*page/i,
-    steps: [
-      { title: 'Design layout and wireframes', description: 'Create wireframes showing the page layout, hero section, features grid, and CTA placement. Define the visual hierarchy and responsive breakpoints.', inputs: 'none', outputs: 'wireframes.md with layout specs and section descriptions' },
-      { title: 'Write copy and content', description: 'Write all page copy: headline, subheadline, feature descriptions, testimonials, and CTA text. Ensure consistent tone and clear value proposition.', inputs: 'wireframes.md with section layout', outputs: 'copy.md with all text content organized by section' },
-      { title: 'Build the page', description: 'Implement the landing page using the wireframes and copy. Build responsive HTML/CSS/JS with all sections, images, and interactive elements.', inputs: 'wireframes.md and copy.md', outputs: 'Working landing page files (index.html, styles.css, etc.)' },
-      { title: 'Test and review', description: 'Test the page across browsers (Chrome, Firefox, Safari) and devices (mobile, tablet, desktop). Check accessibility, load time, and all links/CTAs.', inputs: 'Built landing page files', outputs: 'test-results.md with issues found and fixes applied' },
-      { title: 'Deploy to production', description: 'Deploy the tested landing page to production hosting. Verify DNS, SSL, analytics tracking, and all functionality works in production.', inputs: 'Tested and fixed landing page', outputs: 'Live URL and deployment confirmation' },
-    ],
+    tasks: ['Design layout and wireframes', 'Write copy and content', 'Build the page', 'Test and review', 'Deploy to production'],
   },
   {
     pattern: /fix\s*bug|bugfix|debug/i,
-    steps: [
-      { title: 'Reproduce the bug', description: 'Create a reliable reproduction of the bug. Document exact steps, environment, and expected vs actual behavior.', inputs: 'none', outputs: 'reproduction-steps.md with exact repro scenario' },
-      { title: 'Identify root cause', description: 'Trace through code to find the root cause. Use debugging tools, logs, and tests to isolate the problem.', inputs: 'Reproduction steps', outputs: 'Root cause analysis with file/line references' },
-      { title: 'Implement fix', description: 'Write the minimal, correct fix for the root cause. Ensure the fix doesn\'t introduce regressions.', inputs: 'Root cause analysis', outputs: 'Code changes (diff) implementing the fix' },
-      { title: 'Test the fix', description: 'Verify the fix resolves the bug using the reproduction steps. Add a regression test to prevent recurrence.', inputs: 'Code changes and reproduction steps', outputs: 'Passing tests and verified fix' },
-    ],
+    tasks: ['Reproduce the bug', 'Identify root cause', 'Implement fix', 'Test the fix'],
   },
   {
     pattern: /write\s*(an?\s+)?article|blog\s*post|write\s*up/i,
-    steps: [
-      { title: 'Research topic and gather sources', description: 'Research the topic thoroughly. Collect 5-10 credible sources, key statistics, and expert quotes.', inputs: 'none', outputs: 'research-notes.md with sources, key facts, and angles' },
-      { title: 'Create outline', description: 'Structure the article with a clear thesis, logical section flow, and key points per section. Include intro hook and conclusion.', inputs: 'research-notes.md', outputs: 'outline.md with sections, key points, and source placement' },
-      { title: 'Write first draft', description: 'Write the full article following the outline. Target appropriate word count with engaging prose, transitions, and sourced claims.', inputs: 'outline.md and research-notes.md', outputs: 'draft.md — complete first draft' },
-      { title: 'Edit and revise', description: 'Edit for clarity, grammar, flow, and accuracy. Cut filler, strengthen weak sections, verify all facts and links.', inputs: 'draft.md', outputs: 'final.md — polished article ready to publish' },
-      { title: 'Publish', description: 'Format and publish the article to the target platform. Add meta description, tags, featured image, and social sharing preview.', inputs: 'final.md', outputs: 'Published URL with confirmed formatting' },
-    ],
+    tasks: ['Research topic and gather sources', 'Create outline', 'Write first draft', 'Edit and revise', 'Publish'],
   },
   {
     pattern: /api|endpoint|backend|server/i,
-    steps: [
-      { title: 'Design API schema/routes', description: 'Define all REST/GraphQL endpoints, request/response schemas, authentication, and error codes. Document in OpenAPI or equivalent format.', inputs: 'none', outputs: 'api-design.md with routes, schemas, and auth strategy' },
-      { title: 'Implement endpoints', description: 'Build all API endpoints with proper routing, controllers, and data layer. Follow the schema design exactly.', inputs: 'api-design.md', outputs: 'Working endpoint code with all routes responding' },
-      { title: 'Add validation and error handling', description: 'Add input validation, proper HTTP status codes, error messages, rate limiting, and edge case handling to all endpoints.', inputs: 'Working endpoint code', outputs: 'Hardened endpoints with validation and error handling' },
-      { title: 'Write tests', description: 'Write unit tests for business logic and integration tests for all endpoints. Cover happy paths, edge cases, and error scenarios. Target >80% coverage.', inputs: 'Hardened endpoint code', outputs: 'Test suite with all tests passing' },
-      { title: 'Document the API', description: 'Write API documentation with endpoint descriptions, example requests/responses, authentication guide, and quick-start tutorial.', inputs: 'Tested API code', outputs: 'README.md or docs/ with complete API documentation' },
-    ],
+    tasks: ['Design API schema/routes', 'Implement endpoints', 'Add validation and error handling', 'Write tests', 'Document the API'],
   },
   {
     pattern: /test|testing/i,
-    steps: [
-      { title: 'Identify test scenarios', description: 'Analyze the codebase and requirements to identify all test scenarios: happy paths, edge cases, error conditions, and boundary values.', inputs: 'none', outputs: 'test-plan.md with categorized test scenarios' },
-      { title: 'Write unit tests', description: 'Write unit tests for individual functions and modules. Mock external dependencies. Cover all identified scenarios.', inputs: 'test-plan.md', outputs: 'Unit test files with passing tests' },
-      { title: 'Write integration tests', description: 'Write integration tests that verify components work together. Test API endpoints, database operations, and service interactions.', inputs: 'test-plan.md and unit tests', outputs: 'Integration test files with passing tests' },
-      { title: 'Run full test suite and fix failures', description: 'Run the complete test suite, analyze failures, fix flaky tests, and ensure >80% code coverage.', inputs: 'All test files', outputs: 'All tests passing with coverage report' },
-    ],
+    tasks: ['Identify test scenarios', 'Write unit tests', 'Write integration tests', 'Run full test suite and fix failures'],
   },
   {
     pattern: /deploy|release|ship/i,
-    steps: [
-      { title: 'Pre-deployment checks', description: 'Run full test suite, check for security vulnerabilities, verify environment variables, and review recent changes.', inputs: 'none', outputs: 'pre-deploy-checklist.md with all checks passed' },
-      { title: 'Update configuration', description: 'Update deployment configs, environment variables, feature flags, and version numbers for the target environment.', inputs: 'pre-deploy-checklist.md', outputs: 'Updated config files ready for deployment' },
-      { title: 'Deploy to staging', description: 'Deploy to staging environment using the deployment pipeline. Verify the build succeeds and the app starts.', inputs: 'Updated config files', outputs: 'Running staging deployment with URL' },
-      { title: 'Verify staging', description: 'Run smoke tests on staging. Verify all critical paths, new features, and no regressions. Check logs for errors.', inputs: 'Staging URL', outputs: 'staging-verification.md with test results' },
-      { title: 'Deploy to production', description: 'Deploy to production. Monitor error rates, response times, and key metrics for 30 minutes post-deploy. Have rollback plan ready.', inputs: 'Verified staging build', outputs: 'Production deployment confirmed with monitoring dashboard' },
-    ],
+    tasks: ['Pre-deployment checks', 'Update configuration', 'Deploy to staging', 'Verify staging', 'Deploy to production'],
   },
   {
     pattern: /refactor|clean\s*up|reorganize/i,
-    steps: [
-      { title: 'Audit current code', description: 'Analyze the current codebase for code smells, duplication, complexity, and architectural issues. Document findings.', inputs: 'none', outputs: 'audit-report.md with issues ranked by severity' },
-      { title: 'Plan refactoring approach', description: 'Design the target architecture and plan incremental refactoring steps. Ensure each step keeps the code working.', inputs: 'audit-report.md', outputs: 'refactor-plan.md with ordered steps and risk assessment' },
-      { title: 'Implement refactoring', description: 'Execute the refactoring plan step by step. Make small, focused commits. Keep all tests passing throughout.', inputs: 'refactor-plan.md', outputs: 'Refactored code with clean commits' },
-      { title: 'Test for regressions', description: 'Run the full test suite. Manually verify critical user flows. Compare behavior before and after refactoring.', inputs: 'Refactored code', outputs: 'All tests passing, no regressions confirmed' },
-    ],
+    tasks: ['Audit current code', 'Plan refactoring approach', 'Implement refactoring', 'Test for regressions'],
   },
   {
     pattern: /design|ui|ux|interface/i,
-    steps: [
-      { title: 'Research and gather inspiration', description: 'Research competitor designs, UI patterns, and user expectations. Collect a mood board of 10+ reference designs.', inputs: 'none', outputs: 'inspiration.md with links, screenshots, and pattern notes' },
-      { title: 'Create wireframes', description: 'Create low-fidelity wireframes for all screens/states. Define layout, navigation, and interaction patterns.', inputs: 'inspiration.md', outputs: 'wireframes/ directory with all screen wireframes' },
-      { title: 'Design high-fidelity mockups', description: 'Create pixel-perfect mockups with final colors, typography, spacing, and imagery. Include hover/active states.', inputs: 'wireframes/', outputs: 'mockups/ directory with all final designs' },
-      { title: 'Review and iterate', description: 'Review designs for consistency, accessibility (WCAG AA), and usability. Iterate based on feedback.', inputs: 'mockups/', outputs: 'Revised mockups with review notes addressed' },
-      { title: 'Hand off to development', description: 'Prepare design specs: spacing, colors, fonts, assets, and interaction notes. Export all assets in required formats.', inputs: 'Final mockups', outputs: 'design-specs.md and assets/ directory' },
-    ],
+    tasks: ['Research and gather inspiration', 'Create wireframes', 'Design high-fidelity mockups', 'Review and iterate', 'Hand off to development'],
   },
   {
     pattern: /migrate|migration/i,
-    steps: [
-      { title: 'Analyze current state', description: 'Document the current system: data schemas, dependencies, integrations, and traffic patterns. Identify migration risks.', inputs: 'none', outputs: 'current-state.md with system analysis and risk assessment' },
-      { title: 'Plan migration strategy', description: 'Design the migration approach (big bang vs incremental). Plan data transformation, rollback procedures, and testing strategy.', inputs: 'current-state.md', outputs: 'migration-plan.md with step-by-step procedure and rollback plan' },
-      { title: 'Implement migration', description: 'Build migration scripts, data transformers, and compatibility layers. Test with production-like data volumes.', inputs: 'migration-plan.md', outputs: 'Migration scripts and compatibility code' },
-      { title: 'Validate data integrity', description: 'Run migration on a copy of production data. Verify row counts, data accuracy, relationship integrity, and no data loss.', inputs: 'Migration scripts and test data', outputs: 'validation-report.md confirming data integrity' },
-      { title: 'Switch over', description: 'Execute the production migration during the maintenance window. Verify all systems, update DNS/configs, and monitor for issues.', inputs: 'Validated migration scripts', outputs: 'Completed migration with monitoring confirmation' },
-    ],
+    tasks: ['Analyze current state', 'Plan migration strategy', 'Implement migration', 'Validate data integrity', 'Switch over'],
   },
 ];
 
-const DEFAULT_STEPS: DecomposedStep[] = [
-  { title: 'Plan approach', description: 'Analyze the goal, define scope, identify requirements, and create an actionable plan with clear milestones.', inputs: 'none', outputs: 'plan.md with requirements, approach, and milestones' },
-  { title: 'Implement', description: 'Build the solution following the plan. Write clean, well-structured code or content. Follow best practices.', inputs: 'plan.md', outputs: 'Working implementation with all planned features' },
-  { title: 'Test', description: 'Verify the implementation works correctly. Test edge cases, error handling, and integration points.', inputs: 'Working implementation', outputs: 'All tests passing, issues fixed' },
-  { title: 'Document', description: 'Write clear documentation covering usage, configuration, architecture decisions, and any gotchas.', inputs: 'Tested implementation', outputs: 'README.md or docs with complete documentation' },
-];
+const DEFAULT_TASKS: string[] = ['Plan approach', 'Implement', 'Test', 'Document'];
 
-function decompose(input: string): DecomposedStep[] {
+interface AiResult {
+  topology: 'single' | 'parallel';
+  tasks?: string[];
+}
+
+function templateDecompose(input: string): string[] {
   for (const template of TEMPLATES) {
     if (template.pattern.test(input)) {
-      return template.steps;
+      return template.tasks;
     }
   }
-  return DEFAULT_STEPS;
+  return DEFAULT_TASKS;
 }
 
-function contextualizeSteps(steps: DecomposedStep[], input: string): DecomposedStep[] {
+function contextualizeSteps(tasks: string[], input: string): string[] {
   const shortInput = input.length > 40 ? input.slice(0, 40) + '...' : input;
-  return steps.map(step => ({ ...step, title: `${step.title} — ${shortInput}` }));
+  return tasks.map(t => `${t} — ${shortInput}`);
 }
 
-async function aiDecompose(input: string): Promise<DecomposedStep[]> {
+async function aiDecompose(input: string): Promise<AiResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY environment variable is not set. Use template mode (without --ai) or set the key.');
   }
 
-  const systemPrompt = `You are a project decomposer. Break the user's goal into 3-7 sequential subtasks.
-Each task should be specific enough for an AI agent to execute autonomously.
-Include concrete acceptance criteria and expected artifacts in each description.
-The "inputs" field describes what the task needs from the previous step.
-The "outputs" field describes what the task produces for the next step.
-Be specific about file names, formats, and quality expectations.`;
+  const systemPrompt = `You are a work analyzer. Given a goal, decide:
+1. Can this be done by ONE agent in one session? (topology: "single")
+2. Or does it break into INDEPENDENT parallel tasks? (topology: "parallel", tasks: ["title1", "title2", ...])
+
+Rules:
+- If tasks must be done sequentially, choose "single" (one agent handles the whole flow)
+- Only choose "parallel" when tasks are truly independent and can run simultaneously
+- 3-8 tasks max for parallel
+- Each task title should be a short, actionable phrase`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
   const response = await fetch(url, {
@@ -153,17 +99,15 @@ Be specific about file names, formats, and quality expectations.`;
       generationConfig: {
         responseMimeType: 'application/json',
         responseSchema: {
-          type: 'ARRAY',
-          items: {
-            type: 'OBJECT',
-            properties: {
-              title: { type: 'STRING' },
-              description: { type: 'STRING' },
-              inputs: { type: 'STRING' },
-              outputs: { type: 'STRING' },
+          type: 'OBJECT',
+          properties: {
+            topology: { type: 'STRING', enum: ['single', 'parallel'] },
+            tasks: {
+              type: 'ARRAY',
+              items: { type: 'STRING' },
             },
-            required: ['title', 'description', 'inputs', 'outputs'],
           },
+          required: ['topology'],
         },
       },
     }),
@@ -180,60 +124,83 @@ Be specific about file names, formats, and quality expectations.`;
     throw new Error('Gemini returned no content');
   }
 
-  const steps = JSON.parse(text);
-  if (!Array.isArray(steps) || steps.length === 0) {
-    throw new Error('Gemini returned invalid format (expected non-empty array)');
+  const result = JSON.parse(text);
+  if (!result.topology || !['single', 'parallel'].includes(result.topology)) {
+    throw new Error('Gemini returned invalid topology');
   }
 
-  return steps.map((s: any) => ({
-    title: String(s.title || ''),
-    description: String(s.description || ''),
-    inputs: String(s.inputs || 'none'),
-    outputs: String(s.outputs || ''),
-  }));
+  if (result.topology === 'parallel') {
+    if (!Array.isArray(result.tasks) || result.tasks.length === 0) {
+      throw new Error('Gemini returned parallel topology but no tasks');
+    }
+    return {
+      topology: 'parallel',
+      tasks: result.tasks.map((t: any) => String(t)),
+    };
+  }
+
+  return { topology: 'single' };
 }
 
 export async function doCommand(input: string, opts?: DoOptions): Promise<void> {
   const db = getDb();
   ensureConvoyTable(db);
 
-  let steps: DecomposedStep[];
-  let usedAi = false;
+  const project = opts?.project || '';
+  const chain = opts?.chain || false;
 
+  // AI mode
   if (opts?.ai) {
     try {
-      console.log(`\n${c.dim}🤖 AI decomposing...${c.reset}`);
-      steps = await aiDecompose(input);
-      usedAi = true;
+      console.log(`\n${c.dim}🤖 AI analyzing...${c.reset}`);
+      const result = await aiDecompose(input);
+
+      if (result.topology === 'single') {
+        console.log(`\n${c.bold}🎯 Single Agent Recommended${c.reset}\n`);
+        console.log(`  This is best handled by a single agent.`);
+        console.log(`  Run: ${c.cyan}trak sling --goal '${input}'${c.reset}\n`);
+        return;
+      }
+
+      // Parallel: create tasks with no deps (unless --chain)
+      const tasks = result.tasks!;
+      return createTasks(db, input, tasks, project, chain, '🤖 AI');
     } catch (err: any) {
-      console.log(`\n${c.dim}⚠ AI decomposition failed: ${err.message}${c.reset}`);
+      console.log(`\n${c.dim}⚠ AI analysis failed: ${err.message}${c.reset}`);
       console.log(`${c.dim}  Falling back to template mode${c.reset}`);
-      steps = decompose(input);
     }
-  } else {
-    steps = decompose(input);
   }
 
-  const project = opts?.project || '';
+  // Template fallback — parallel by default (no deps unless --chain)
+  const tasks = templateDecompose(input);
+  const contextual = contextualizeSteps(tasks, input);
+  return createTasks(db, input, contextual, project, chain, '📋 template');
+}
 
+function createTasks(
+  db: ReturnType<typeof getDb>,
+  input: string,
+  tasks: string[],
+  project: string,
+  chain: boolean,
+  modeLabel: string,
+): void {
   // Create convoy for this batch
   const convoyId = `convoy-${generateId().split('-')[1]}`;
   db.exec(`CREATE TABLE IF NOT EXISTS convoys (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')))`);
   db.prepare('INSERT INTO convoys (id, name) VALUES (?, ?)').run(convoyId, input);
 
   const taskIds: string[] = [];
-  const contextualSteps = usedAi ? steps : contextualizeSteps(steps, input);
 
-  // Create subtasks
-  for (let i = 0; i < contextualSteps.length; i++) {
+  for (let i = 0; i < tasks.length; i++) {
     const id = generateId();
-    const step = contextualSteps[i];
-    const fullDescription = `${step.description}\n\nInputs: ${step.inputs}\nOutputs: ${step.outputs}\n\nPart of: ${input}`;
+    const title = tasks[i];
+    const description = `Part of: ${input}`;
 
     db.prepare(`
       INSERT INTO tasks (id, title, description, priority, project, autonomy, convoy, tags)
       VALUES (?, ?, ?, ?, ?, 'auto', ?, 'auto,do')
-    `).run(id, step.title, fullDescription, 1, project, convoyId);
+    `).run(id, title, description, 1, project, convoyId);
 
     db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
       id, `Created by 'trak do': ${input}`
@@ -242,26 +209,32 @@ export async function doCommand(input: string, opts?: DoOptions): Promise<void> 
     taskIds.push(id);
   }
 
-  // Chain dependencies: each task depends on the previous
-  for (let i = 1; i < taskIds.length; i++) {
-    db.prepare('INSERT INTO dependencies (child_id, parent_id) VALUES (?, ?)').run(taskIds[i], taskIds[i - 1]);
+  // Only chain deps if --chain flag is set
+  if (chain) {
+    for (let i = 1; i < taskIds.length; i++) {
+      db.prepare('INSERT INTO dependencies (child_id, parent_id) VALUES (?, ?)').run(taskIds[i], taskIds[i - 1]);
+    }
   }
 
   afterWrite(db);
 
   // Display the plan
-  const modeLabel = usedAi ? '🤖 AI' : '📋 template';
-  console.log(`\n${c.bold}🚀 trak do${c.reset} — decomposed into ${steps.length} subtasks (${modeLabel})\n`);
+  const topology = chain ? 'sequential' : 'parallel';
+  console.log(`\n${c.bold}🚀 trak do${c.reset} — ${tasks.length} subtasks [${topology}] (${modeLabel})\n`);
   console.log(`  ${c.dim}Goal:${c.reset} ${input}`);
   console.log(`  ${c.dim}Convoy:${c.reset} ${convoyId}`);
   if (project) console.log(`  ${c.dim}Project:${c.reset} ${project}`);
   console.log(`\n${c.dim}${'─'.repeat(50)}${c.reset}\n`);
 
   for (let i = 0; i < taskIds.length; i++) {
-    const arrow = i === 0 ? '▸' : '  →';
-    const ready = i === 0 ? ` ${c.green}← READY${c.reset}` : '';
-    console.log(`  ${arrow} ${c.bold}${taskIds[i]}${c.reset} ${contextualSteps[i].title}${ready}`);
+    const ready = chain ? (i === 0 ? ` ${c.green}← READY${c.reset}` : '') : ` ${c.green}← READY${c.reset}`;
+    const bullet = chain ? (i === 0 ? '▸' : '  →') : '▸';
+    console.log(`  ${bullet} ${c.bold}${taskIds[i]}${c.reset} ${tasks[i]}${ready}`);
   }
 
-  console.log(`\n${c.green}✓${c.reset} First ready task: ${c.bold}${taskIds[0]}${c.reset}\n`);
+  if (chain) {
+    console.log(`\n${c.green}✓${c.reset} First ready task: ${c.bold}${taskIds[0]}${c.reset}\n`);
+  } else {
+    console.log(`\n${c.green}✓${c.reset} All ${taskIds.length} tasks ready — run ${c.cyan}trak run${c.reset} to dispatch\n`);
+  }
 }

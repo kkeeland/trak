@@ -40,6 +40,7 @@ import { convoyCreateCommand, convoyAddCommand, convoyShowCommand, convoyReadyCo
 import { mailSendCommand, mailCheckCommand, mailReadCommand, mailListCommand, MailSendOptions, MailCheckOptions, MailListOptions } from './commands/mail.js';
 import { slingCommand, SlingOptions } from './commands/sling.js';
 import { runCommand, RunOptions } from './commands/run.js';
+import { helpCommand } from './commands/help-request.js';
 
 const program = new Command();
 
@@ -355,6 +356,7 @@ program
   .argument('<input>', 'Natural language description of what to do')
   .option('-b, --project <project>', 'Project grouping')
   .option('--ai', 'Use AI to decompose (requires GEMINI_API_KEY)')
+  .option('--chain', 'Force sequential dependencies (backward compat)')
   .action((input: string, opts: DoOptions) => { doCommand(input, opts); });
 
 // Sling command — dispatch to agent
@@ -363,6 +365,7 @@ program
   .description('Dispatch a task to an agent for autonomous execution')
   .option('--json', 'Output dispatch payload as JSON')
   .option('-b, --project <project>', 'Filter by project when auto-picking')
+  .option('--goal <goal>', 'Create a single task from a goal and dispatch it')
   .option('--execute', 'Auto-spawn agent (future)')
   .action((taskId: string | undefined, opts: SlingOptions) => slingCommand(taskId, opts));
 
@@ -443,5 +446,13 @@ mail
   .option('--agent <name>', 'Filter by agent')
   .option('--all', 'Show all messages')
   .action((opts: MailListOptions) => mailListCommand(opts));
+
+// Help request command
+program
+  .command('help')
+  .description('Log a help request on a task (for agents to signal they need assistance)')
+  .argument('<task-id>', 'Task ID')
+  .argument('<message>', 'Help request message')
+  .action((taskId: string, message: string) => helpCommand(taskId, message));
 
 program.parse();
