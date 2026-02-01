@@ -368,6 +368,7 @@ program
   .command('sync')
   .description('Export JSONL and commit to git')
   .option('--push', 'Also push to remote')
+  .option('--compact', 'Force full snapshot export instead of event log')
   .action((opts: SyncOptions) => syncCommand(opts));
 
 // Pull command
