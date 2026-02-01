@@ -1,142 +1,188 @@
-# trak
+# trak ⚡
 
-> AI-native task tracker — tasks are conversations, not tickets.
+**Task tracking for AI agent swarms.** Assign work to Claude Code, have Cursor verify it, track what it cost — all from the terminal in under 100ms.
 
-## What is trak?
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/trak.svg)](https://www.npmjs.com/package/trak)
 
-**trak** is a CLI task tracker built for AI agents managing multiple projects. It's designed around the way agents actually work:
+---
 
-- **Tasks are conversations** — every task has a journal that captures the back-and-forth between humans and agents
-- **Multi-project** — manage tasks across multiple projects from a single board
-- **Heat scores** — auto-calculated priority based on dependency fan-out, age, and activity
-- **Cost tracking** — know what each task costs in tokens and dollars
-- **Agent-native** — tracks which agent session worked on what
+## The Problem
 
-## Install
+AI coding agents have no persistent memory of what they're working on. Tasks live in your head, in scattered GitHub issues, or in tools built for humans. When you run 5 agents in parallel, nobody knows who's doing what, what's been verified, or what it cost.
+
+## The Solution
+
+trak is a CLI-first task tracker built for multi-agent workflows. It's the coordination layer between your AI agents.
 
 ```bash
-# From npm (coming soon)
-npm install -g trak
-
-# From source
-git clone https://github.com/kkeeland/trak.git
-cd trak
-npm install
-npm run build
-npm link
+npx trak init
+trak create "Build auth system" --project api -p 0
+trak assign api-auth claude-code
+trak verify api-auth --pass --agent cursor
+trak cost --project api  # $0.42 across 3 agents
 ```
 
 ## Quick Start
 
 ```bash
-trak init                                      # Initialize database
-trak create "Build landing page" --project peptok   # Create a task
-trak create "Fix auth bug" --project forge -p 3     # High priority
-trak list                                      # See all active tasks
-trak board                                     # Visual board grouped by project
-trak ready                                     # What can I work on right now?
+npm install -g trak    # or: npx trak <command>
+trak init              # initialize in current directory
+trak setup claude      # auto-configure for Claude Code
+trak create "My first task" --project myapp
+trak board             # see everything at a glance
 ```
 
-## Commands
+## One-Command Integration
 
-| Command | Description |
-|---------|-------------|
-| `trak init` | Initialize SQLite database in `.trak/` |
-| `trak create <title>` | Create a new task |
-| `trak list` | List tasks with filters |
-| `trak ready` | Show unblocked tasks ready for work |
-| `trak board [project]` | Board view grouped by project |
-| `trak show <id>` | Full task detail + journal |
-| `trak status <id> <status>` | Change task status |
-| `trak log <id> <entry>` | Append to task journal |
-| `trak dep add <child> <parent>` | Add dependency |
-| `trak dep rm <child> <parent>` | Remove dependency |
-| `trak close <id>` | Mark task as done |
-| `trak digest` | What changed in the last 24 hours |
-| `trak stale [days]` | Tasks with no activity > N days |
-| `trak cost` | Cost tracking by project |
-| `trak heat` | Show tasks by heat score |
-| `trak export` | Dump to JSON |
-| `trak import <file>` | Import from JSON |
-| `trak import-beads <path>` | Import from beads JSONL workspace |
-
-### Create Options
+trak auto-configures itself for your AI coding tool:
 
 ```bash
-trak create "title" \
-  --project peptok    # Project grouping (-b alias)
-  -p 2                # Priority (0-3)
-  -d "description"    # Detailed description
-  -t "tag1,tag2"      # Comma-separated tags
-  --parent trak-abc   # Parent task (subtask)
-  -s "agent-42"       # Agent session label
+trak setup claude      # → appends to CLAUDE.md
+trak setup cursor      # → appends to .cursorrules
+trak setup clawdbot    # → appends to AGENTS.md
+trak setup codex       # → appends to AGENTS.md
+trak setup aider       # → appends to CONVENTIONS.md
 ```
 
-### List Filters
+Your agent starts tracking tasks automatically. No config files. No API keys.
+
+## Features
+
+### 🔥 Heat Score (Auto-Priority)
+
+Tasks auto-sort by urgency. High dependency fan-out + age + recency = hot.
 
 ```bash
-trak list --project peptok  # Filter by project
-trak list --status wip      # Filter by status
-trak list --tags "urgent"   # Filter by tag
-trak list --all             # Include done/archived
-trak list -v                # Verbose output
+trak heat
+# 🔥 97  trak-a1b  Build auth system     [api]  P0
+# 🔥 62  trak-c3d  Write unit tests      [api]  P1
+# 🔥 34  trak-e5f  Update docs           [api]  P2
 ```
 
-### Import from Beads
+### 📋 Epics
+
+Group tasks into big-picture containers with progress bars:
 
 ```bash
-trak import-beads /path/to/.beads/            # Import from beads workspace dir
-trak import-beads /path/to/issues.jsonl       # Import from specific JSONL file
+trak epic create "v2.0 Launch" --project api
+trak epic list
+# 📋 trak-abc [████░░░░] 4/10  v2.0 Launch  [api]
 ```
 
-Maps beads fields to trak schema: labels → project + tags, status, priority, dependencies.
+### 🔗 Dependencies
 
-## Statuses
+Model real workflows. `trak ready` shows only what's actually unblocked.
 
-| Status | Emoji | Description |
-|--------|-------|-------------|
-| open | ○ | New, not started |
-| wip | 🔨 | Work in progress |
-| blocked | 🚫 | Waiting on something |
-| review | 👀 | Needs review |
-| done | ✅ | Completed |
-| archived | 📦 | Archived |
-
-## Heat Score
-
-trak auto-calculates a heat score for each task based on:
-
-- **Dependency fan-out** — tasks blocking many others are hotter
-- **Age** — older open tasks accumulate heat
-- **Recency** — recently discussed tasks get a boost
-- **Priority** — manual priority adds to heat
-- **Blocked penalty** — blocked tasks cool down
-
+```bash
+trak dep add trak-c3d trak-a1b   # tests depend on auth
+trak ready                        # only shows unblocked work
 ```
-▓▓▓▓▓ (8)  trak-a1b2c3 P3 [forge] Fix auth — blocking 3 others
-▓▓▓░░ (5)  trak-d4e5f6 P2 [peptok] Landing page
-▓░░░░ (2)  trak-g7h8i9 P1 [adapt] Update docs
+
+### 🤖 Multi-Agent Coordination
+
+```bash
+trak assign <id> claude-code          # Agent 1 builds
+trak verify <id> --pass --agent cursor  # Agent 2 reviews
+trak claims                           # See who's working on what
+trak pipeline <epic-id>               # Verification pipeline view
 ```
+
+### 📊 Cost Tracking
+
+Know exactly what each task cost across agents and models.
+
+```bash
+trak cost --project api
+```
+
+### 📝 Task Journals
+
+Every task has an append-only log — decisions, findings, progress.
+
+```bash
+trak log <id> "Found a race condition in the auth flow"
+trak show <id>   # see full journal
+```
+
+### 🔍 Retro Vision
+
+Trace any task backwards through its dependency tree. Auto-generate project context for new agents:
+
+```bash
+trak trace <id>        # full dependency tree
+trak context myapp     # generate CONTEXT.md for new agents
+```
+
+### 🔄 Migration
+
+Coming from Beads? One command:
+
+```bash
+trak import-beads .beads/
+```
+
+## All Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `init` | Initialize trak in current directory | `trak init` |
+| `create` | Create a new task | `trak create "title" --project api -p 1` |
+| `list` | List tasks with filters | `trak list --project api --status wip` |
+| `ready` | Show unblocked tasks ready for work | `trak ready` |
+| `board` | Board view grouped by project | `trak board` |
+| `show` | Show full task detail + journal | `trak show trak-abc` |
+| `status` | Change task status | `trak status trak-abc wip` |
+| `log` | Append entry to task journal | `trak log trak-abc "progress note"` |
+| `close` | Mark task as done | `trak close trak-abc` |
+| `heat` | Show tasks by heat score | `trak heat` |
+| `cost` | Cost tracking by project | `trak cost --project api` |
+| `dep add` | Add dependency | `trak dep add child parent` |
+| `dep rm` | Remove dependency | `trak dep rm child parent` |
+| `epic create` | Create an epic | `trak epic create "v2" --project api` |
+| `epic list` | List all epics with progress | `trak epic list` |
+| `epic show` | Show epic detail | `trak epic show trak-abc` |
+| `assign` | Assign task to an agent | `trak assign trak-abc claude-code` |
+| `verify` | Record verification result | `trak verify trak-abc --pass --agent cursor` |
+| `claim` | Claim a task for an agent | `trak claim trak-abc my-agent` |
+| `claims` | Show all active claims | `trak claims` |
+| `pipeline` | Verification pipeline for an epic | `trak pipeline trak-abc` |
+| `stats` | Agent performance stats | `trak stats` |
+| `trace` | Full dependency tree | `trak trace trak-abc` |
+| `context` | Generate CONTEXT.md for a project | `trak context myapp` |
+| `history` | Task history timeline | `trak history trak-abc` |
+| `digest` | What changed in the last 24 hours | `trak digest` |
+| `stale` | Tasks with no recent activity | `trak stale` |
+| `setup` | Configure AI tool integration | `trak setup claude` |
+| `import-beads` | Import from beads workspace | `trak import-beads .beads/` |
+| `export` | Dump all data to JSON | `trak export` |
+| `import` | Import tasks from JSON | `trak import tasks.json` |
 
 ## Philosophy
 
-Traditional task trackers are built for humans clicking through web UIs. trak is different:
+- **Zero friction** — if it takes more than 2 seconds, it's too slow
+- **Auto-track** — the best task tracker is invisible
+- **Local-first** — SQLite, no accounts, no API keys, no network
+- **AI-native** — built for agents first, humans second
 
-1. **CLI-first** — AI agents don't click buttons
-2. **Journal-native** — every task captures the conversation, not just a title
-3. **Multi-project** — agents manage portfolios, not single projects
-4. **Cost-aware** — in an AI world, work has measurable token costs
-5. **Heat over priority** — computed importance beats gut-feel priority
+## Architecture
 
-trak doesn't try to be Jira. It's a lightweight, fast, local-first task tracker that treats AI agents as first-class citizens.
+- **Storage:** SQLite via better-sqlite3 (single file, `.trak/trak.db`)
+- **Performance:** <100ms for any operation on 500+ tasks
+- **Zero dependencies on external services** — works offline, works in CI, works anywhere Node runs
 
-## Schema
+## Experimental Features
 
-SQLite database stored in `.trak/trak.db`:
+The following are shipped but evolving based on real-world usage:
 
-- **tasks** — core task data with status, priority, project, cost tracking
-- **dependencies** — directed graph of task dependencies
-- **task_log** — append-only journal for each task
+- Multi-agent verification chains (assign, verify, claim)
+- Pipeline views
+- Agent performance stats
+- Context generation
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
 

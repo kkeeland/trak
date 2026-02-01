@@ -1,7 +1,7 @@
 {
   "name": "trak",
   "version": "0.1.0",
-  "description": "AI-native task tracker CLI — tasks are conversations, not tickets",
+  "description": "Task tracking for AI agent swarms",
   "main": "dist/cli.js",
   "bin": {
     "trak": "./dist/cli.js"
@@ -14,13 +14,20 @@
   "keywords": [
     "task-tracker",
     "cli",
-    "ai",
-    "agent",
+    "ai-agent",
+    "claude-code",
+    "cursor",
+    "multi-agent",
     "sqlite",
-    "productivity"
+    "local-first"
   ],
   "author": "Kevin Keeland",
   "license": "MIT",
+  "homepage": "https://github.com/kkeeland/trak",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kkeeland/trak.git"
+  },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
     "chalk": "^5.4.1",
