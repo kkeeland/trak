@@ -55,7 +55,14 @@ export function logCommand(id: string, entry: string, opts: LogOptions): void {
     }
   }
 
-  afterWrite(db);
+  afterWrite(db, {
+    op: 'log',
+    id: task.id,
+    data: {
+      entry: entry,
+      author: author
+    }
+  });
   hookTaskLogged(task, entry, author);
 
   console.log(`${c.green}✓${c.reset} Logged to ${c.dim}${task.id}${c.reset} ${c.cyan}[${author}]${c.reset} ${entry}`);

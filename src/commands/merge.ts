@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getDb, initDb, afterWrite } from '../db.js';
-import { JsonlTask, importFromJsonl, getJsonlPath, exportToJsonl } from '../jsonl.js';
+import { JsonlTask, importFromJsonl, parseJsonl, getJsonlPath, isEventLog, compactToSnapshots } from '../jsonl.js';
 import { c } from '../utils.js';
 
 /**
@@ -177,6 +177,20 @@ export function mergeCommand(): void {
     console.log(`${c.dim}No conflict markers found in ${jsonlPath} — nothing to merge${c.reset}`);
     console.log(`${c.dim}Tip: use 'trak pull' to rebuild DB from a clean JSONL${c.reset}`);
     return;
+  }
+
+  // If this is an event log with conflicts, we need to compact it first
+  if (isEventLog(jsonlPath)) {
+    console.log(`${c.yellow}⚠ Event log has conflicts — converting to snapshots for merge${c.reset}`);
+    // This is tricky - we can't easily merge event logs with conflicts
+    // For now, suggest manual resolution
+    console.error(`${c.red}Cannot auto-merge conflicted event logs.${c.reset}`);
+    console.error(`${c.dim}Resolution steps:${c.reset}`);
+    console.error(`  1. Pick one side: git checkout --ours ${path.basename(jsonlPath)} OR git checkout --theirs ${path.basename(jsonlPath)}`);
+    console.error(`  2. Run: trak pull`);
+    console.error(`  3. Run: trak sync --compact`);
+    console.error(`  4. Commit the resolved state`);
+    process.exit(1);
   }
 
   // Parse conflicted file

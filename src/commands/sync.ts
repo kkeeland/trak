@@ -2,11 +2,12 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '../db.js';
-import { exportToJsonl, getJsonlPath } from '../jsonl.js';
+import { exportToJsonl, compactToSnapshots, isEventLog, getJsonlPath } from '../jsonl.js';
 import { c } from '../utils.js';
 
 export interface SyncOptions {
   push?: boolean;
+  compact?: boolean;
 }
 
 function findDbPath(): string | null {
@@ -46,9 +47,16 @@ export function syncCommand(opts: SyncOptions): void {
 
   const db = getDb();
   
-  // 1. Export to JSONL
-  exportToJsonl(db, dbPath);
   const jsonlPath = getJsonlPath(dbPath);
+  
+  // 1. Export to JSONL (compact mode if requested or if we detect we should compact)
+  if (opts.compact || !isEventLog(jsonlPath)) {
+    // Force compact mode for non-event logs or when explicitly requested
+    compactToSnapshots(db, dbPath);
+  } else {
+    // Event log is already up-to-date (we append events in afterWrite)
+    console.log(`${c.dim}Event log is already current${c.reset}`);
+  }
   
   if (!fs.existsSync(jsonlPath)) {
     console.error(`${c.red}JSONL export failed${c.reset}`);

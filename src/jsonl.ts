@@ -1,8 +1,9 @@
 /**
- * JSONL export/import — snapshot-based sync layer
+ * JSONL export/import — event-based and snapshot-based sync layer
  * 
- * Exports full task state to .trak/trak.jsonl (one JSON object per line).
- * This is a snapshot dump, not an event log.
+ * Supports two formats:
+ * 1. Event log: Each line is {"op":"create|update|close|dep_add|dep_rm|log|claim","id":"task-id","ts":"ISO","data":{...changed fields only...}}
+ * 2. Legacy snapshots: Full task state dumps (one JSON object per line)
  */
 
 import Database from 'better-sqlite3';
@@ -11,6 +12,20 @@ import path from 'path';
 import { Task, LogEntry, Dependency, TaskClaim } from './db.js';
 
 const JSONL_FILE = 'trak.jsonl';
+
+// Event log types
+export type EventOp = 'create' | 'update' | 'close' | 'dep_add' | 'dep_rm' | 'log' | 'claim';
+
+export interface EventLogEntry {
+  op: EventOp;
+  id: string;
+  ts: string; // ISO timestamp
+  data: Record<string, any>; // Changed fields only
+}
+
+export interface EventLogOptions {
+  compactThreshold?: number; // After this many events, write a compact snapshot
+}
 
 export interface JsonlTask {
   id: string;
@@ -58,8 +73,46 @@ export function getJsonlPath(dbPath: string): string {
 }
 
 /**
- * Export all tasks to JSONL format.
+ * Append an event to the JSONL file.
+ * Used for incremental event logging instead of full snapshots.
+ */
+export function appendEvent(dbPath: string, event: EventLogEntry): void {
+  const jsonlPath = getJsonlPath(dbPath);
+  const eventLine = JSON.stringify(event) + '\n';
+  fs.appendFileSync(jsonlPath, eventLine);
+}
+
+/**
+ * Check if JSONL file contains events (vs legacy snapshots).
+ * Events have an "op" field, snapshots have task fields like "title".
+ */
+export function isEventLog(filePath: string): boolean {
+  if (!fs.existsSync(filePath)) return true; // New files start as event logs
+  
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const firstLine = content.split('\n').find(l => l.trim().length > 0);
+  if (!firstLine) return true;
+  
+  try {
+    const record = JSON.parse(firstLine);
+    return 'op' in record && 'ts' in record;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Compact an event log into a single snapshot.
+ * Replaces the JSONL file with full task snapshots.
+ */
+export function compactToSnapshots(db: Database.Database, dbPath: string): void {
+  exportToJsonl(db, dbPath);
+}
+
+/**
+ * Export all tasks to JSONL format as complete snapshots.
  * Each line is a complete task snapshot with embedded journal, deps, and claims.
+ * This is used for periodic compaction or legacy compatibility.
  */
 export function exportToJsonl(db: Database.Database, dbPath: string): void {
   const jsonlPath = getJsonlPath(dbPath);
@@ -140,9 +193,20 @@ export function exportToJsonl(db: Database.Database, dbPath: string): void {
 }
 
 /**
- * Parse a JSONL file and return task records
+ * Parse a JSONL file — handles both event logs and legacy snapshots
  */
 export function parseJsonl(filePath: string): JsonlTask[] {
+  if (isEventLog(filePath)) {
+    return parseEventLogToSnapshots(filePath);
+  } else {
+    return parseLegacySnapshots(filePath);
+  }
+}
+
+/**
+ * Parse legacy snapshot format (for backward compatibility)
+ */
+function parseLegacySnapshots(filePath: string): JsonlTask[] {
   const content = fs.readFileSync(filePath, 'utf-8');
   const lines = content.split('\n').filter(l => l.trim().length > 0);
   return lines.map((line, i) => {
@@ -155,8 +219,162 @@ export function parseJsonl(filePath: string): JsonlTask[] {
 }
 
 /**
+ * Parse an event log and replay it into task snapshots
+ */
+function parseEventLogToSnapshots(filePath: string): JsonlTask[] {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n').filter(l => l.trim().length > 0);
+  
+  // Parse all events
+  const events: EventLogEntry[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    try {
+      const event = JSON.parse(lines[i]) as EventLogEntry;
+      if (!event.op || !event.id || !event.ts) {
+        // Might be a legacy snapshot line mixed in - skip for now
+        continue;
+      }
+      events.push(event);
+    } catch {
+      throw new Error(`Invalid JSON on line ${i + 1}`);
+    }
+  }
+  
+  // Replay events into task state
+  const tasks = new Map<string, JsonlTask>();
+  const deps = new Map<string, Set<string>>(); // child_id -> Set<parent_id>
+  
+  for (const event of events) {
+    switch (event.op) {
+      case 'create':
+        tasks.set(event.id, {
+          id: event.id,
+          title: event.data.title || '',
+          description: event.data.description || '',
+          status: event.data.status || 'open',
+          priority: event.data.priority ?? 1,
+          project: event.data.project || '',
+          blocked_by: event.data.blocked_by || '',
+          parent_id: event.data.parent_id || null,
+          epic_id: event.data.epic_id || null,
+          is_epic: event.data.is_epic ?? 0,
+          created_at: event.ts,
+          updated_at: event.ts,
+          agent_session: event.data.agent_session || '',
+          tokens_used: event.data.tokens_used ?? 0,
+          cost_usd: event.data.cost_usd ?? 0,
+          tags: event.data.tags || '',
+          assigned_to: event.data.assigned_to || '',
+          verified_by: event.data.verified_by || '',
+          verification_status: event.data.verification_status || '',
+          created_from: event.data.created_from || '',
+          verify_command: event.data.verify_command || '',
+          wip_snapshot: event.data.wip_snapshot || '',
+          autonomy: event.data.autonomy || 'manual',
+          budget_usd: event.data.budget_usd ?? null,
+          tokens_in: event.data.tokens_in ?? 0,
+          tokens_out: event.data.tokens_out ?? 0,
+          model_used: event.data.model_used || '',
+          duration_seconds: event.data.duration_seconds ?? 0,
+          retry_count: event.data.retry_count ?? 0,
+          max_retries: event.data.max_retries ?? 3,
+          last_failure_reason: event.data.last_failure_reason || '',
+          retry_after: event.data.retry_after || null,
+          journal: [],
+          deps: [],
+          claims: []
+        });
+        break;
+        
+      case 'update':
+        const task = tasks.get(event.id);
+        if (task) {
+          Object.assign(task, event.data);
+          task.updated_at = event.ts;
+        }
+        break;
+        
+      case 'close':
+        const closeTask = tasks.get(event.id);
+        if (closeTask) {
+          closeTask.status = event.data.status || 'done';
+          closeTask.updated_at = event.ts;
+        }
+        break;
+        
+      case 'dep_add':
+        if (!deps.has(event.id)) {
+          deps.set(event.id, new Set());
+        }
+        deps.get(event.id)!.add(event.data.parent_id);
+        break;
+        
+      case 'dep_rm':
+        const depSet = deps.get(event.id);
+        if (depSet) {
+          depSet.delete(event.data.parent_id);
+        }
+        break;
+        
+      case 'log':
+        const logTask = tasks.get(event.id);
+        if (logTask) {
+          logTask.journal.push({
+            timestamp: event.ts,
+            entry: event.data.entry,
+            author: event.data.author || 'system'
+          });
+        }
+        break;
+        
+      case 'claim':
+        const claimTask = tasks.get(event.id);
+        if (claimTask) {
+          claimTask.claims.push({
+            agent: event.data.agent,
+            model: event.data.model || '',
+            status: event.data.status || 'claimed',
+            claimed_at: event.ts,
+            released_at: event.data.released_at || null
+          });
+        }
+        break;
+    }
+  }
+  
+  // Convert deps map back to task.deps arrays
+  for (const [taskId, parentSet] of deps) {
+    const task = tasks.get(taskId);
+    if (task) {
+      task.deps = Array.from(parentSet);
+    }
+  }
+  
+  // Sort journal and claims by timestamp
+  for (const task of tasks.values()) {
+    task.journal.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    task.claims.sort((a, b) => a.claimed_at.localeCompare(b.claimed_at));
+  }
+  
+  return Array.from(tasks.values()).sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+/**
+ * Import from event log file directly (for use in pull command)
+ */
+export function importEventsFromJsonl(db: Database.Database, filePath: string): { tasks: number; deps: number; logs: number; claims: number } {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`JSONL file not found: ${filePath}`);
+  }
+  
+  const records = parseJsonl(filePath); // This handles both events and snapshots
+  return importFromJsonl(db, records);
+}
+
+/**
  * Rebuild SQLite database from JSONL records.
  * Clears existing data and replaces with JSONL content.
+ * Records can come from either event replay or legacy snapshots.
  */
 export function importFromJsonl(db: Database.Database, records: JsonlTask[]): { tasks: number; deps: number; logs: number; claims: number } {
   let taskCount = 0;

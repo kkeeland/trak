@@ -68,7 +68,23 @@ export function createCommand(title: string, opts: CreateOptions): void {
     VALUES (?, ?, ?)
   `).run(id, `Created: ${title}`, opts.session || 'human');
 
-  afterWrite(db);
+  afterWrite(db, {
+    op: 'create',
+    id: id,
+    data: {
+      title,
+      description: opts.description || '',
+      priority,
+      project: opts.project || '',
+      parent_id: opts.parent || null,
+      tags: opts.tags || '',
+      agent_session: opts.session || '',
+      epic_id: opts.epic || null,
+      is_epic: opts.isEpic ? 1 : 0,
+      autonomy,
+      budget_usd: budgetUsd
+    }
+  });
 
   // Fire webhook
   const createdTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task;

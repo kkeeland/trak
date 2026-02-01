@@ -34,7 +34,13 @@ export function depAddCommand(childId: string, parentId: string): void {
     child.id, `Added dependency on ${parent.id} (${parent.title})`
   );
 
-  afterWrite(db);
+  afterWrite(db, {
+    op: 'dep_add',
+    id: child.id,
+    data: {
+      parent_id: parent.id
+    }
+  });
 
   console.log(`${c.green}✓${c.reset} ${c.dim}${child.id}${c.reset} depends on ${c.dim}${parent.id}${c.reset}`);
   console.log(`  ${child.title} → ${parent.title}`);
@@ -55,6 +61,14 @@ export function depRmCommand(childId: string, parentId: string): void {
   db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
     child.id, `Removed dependency on ${parent.id}`
   );
+
+  afterWrite(db, {
+    op: 'dep_rm',
+    id: child.id,
+    data: {
+      parent_id: parent.id
+    }
+  });
 
   console.log(`${c.green}✓${c.reset} Removed dependency: ${c.dim}${child.id}${c.reset} → ${c.dim}${parent.id}${c.reset}`);
 }

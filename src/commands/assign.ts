@@ -30,7 +30,14 @@ export function assignCommand(id: string, agentName: string): void {
     );
   }
 
-  afterWrite(db);
+  afterWrite(db, {
+    op: 'update',
+    id: task.id,
+    data: {
+      assigned_to: agentName,
+      status: newStatus
+    }
+  });
   hookTaskAssigned(task, agentName);
   if (oldStatus !== newStatus) {
     hookTaskStatusChanged(task, oldStatus, newStatus);

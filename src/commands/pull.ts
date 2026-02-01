@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getDb, initDb, afterWrite } from '../db.js';
-import { parseJsonl, importFromJsonl, getJsonlPath } from '../jsonl.js';
+import { importEventsFromJsonl, getJsonlPath } from '../jsonl.js';
 import { c } from '../utils.js';
 
 function findDbPath(): string | null {
@@ -67,14 +67,6 @@ export function pullCommand(): void {
   }
 
   // 3. Import from JSONL
-  let records;
-  try {
-    records = parseJsonl(jsonlPath);
-  } catch (e: any) {
-    console.error(`${c.red}Failed to parse JSONL: ${e.message}${c.reset}`);
-    process.exit(1);
-  }
-
   let db;
   try {
     db = getDb();
@@ -83,7 +75,13 @@ export function pullCommand(): void {
     db = initDb();
   }
 
-  const result = importFromJsonl(db, records);
+  let result;
+  try {
+    result = importEventsFromJsonl(db, jsonlPath);
+  } catch (e: any) {
+    console.error(`${c.red}Failed to import JSONL: ${e.message}${c.reset}`);
+    process.exit(1);
+  }
   afterWrite(db);
 
   console.log(`${c.green}✓${c.reset} Rebuilt database from JSONL`);

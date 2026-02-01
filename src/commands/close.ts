@@ -191,7 +191,15 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
     }
   }
 
-  afterWrite(db);
+  afterWrite(db, {
+    op: 'close',
+    id: task.id,
+    data: {
+      status: 'done',
+      verified: opts?.verify || false,
+      forced: opts?.force || false
+    }
+  });
   hookTaskClosed(task);
 
   console.log(`${c.green}✓${c.reset} ${STATUS_EMOJI.done} ${c.dim}${task.id}${c.reset} ${task.title}`);

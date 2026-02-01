@@ -392,18 +392,32 @@ export function getCurrentDbPath(): string | null {
 }
 
 /**
- * After-write hook: export to JSONL for git sync.
- * Must be called with the db instance after any mutation.
+ * After-write hook: append events to JSONL for git sync.
+ * Must be called with the db instance and change context after any mutation.
  * Dynamically imports jsonl to avoid circular deps.
  * If sync.autocommit is enabled, also runs sync (git add + commit).
  */
-export function afterWrite(db: Database.Database): void {
+export function afterWrite(db: Database.Database, eventData?: { op: string; id: string; data?: Record<string, any> }): void {
   try {
     const dbPath = _currentDbPath || findDbPath();
     if (!dbPath) return;
+    
     // Dynamic require to avoid circular import
     const jsonl = require('./jsonl.js');
-    jsonl.exportToJsonl(db, dbPath);
+    
+    if (eventData) {
+      // Append event to log
+      const event = {
+        op: eventData.op,
+        id: eventData.id,
+        ts: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        data: eventData.data || {}
+      };
+      jsonl.appendEvent(dbPath, event);
+    } else {
+      // Fallback to full export (for backward compatibility)
+      jsonl.exportToJsonl(db, dbPath);
+    }
 
     // Check for autocommit config
     try {
