@@ -18,6 +18,7 @@ import { heatCommand } from './commands/heat.js';
 import { exportCommand } from './commands/export.js';
 import { importCommand } from './commands/import.js';
 import { importBeadsCommand } from './commands/import-beads.js';
+import { setupCommand } from './commands/setup.js';
 
 const program = new Command();
 
@@ -150,5 +151,12 @@ program
   .description('Import tasks from beads JSONL workspace')
   .argument('<path>', 'Path to beads workspace (.beads/ dir) or issues.jsonl file')
   .action((path: string) => importBeadsCommand(path));
+
+program
+  .command('setup')
+  .description('Configure trak integration for AI coding tools')
+  .argument('[tool]', 'Tool to configure: claude, cursor, clawdbot, codex, aider, generic')
+  .option('-l, --list', 'Show all supported tools')
+  .action((tool?: string, opts?: { list?: boolean }) => setupCommand(tool, opts));
 
 program.parse();
