@@ -64,5 +64,9 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
   if (unblockedAutoTasks.length > 0) {
     const items = unblockedAutoTasks.map(t => `${t.id} (${t.title})`).join(', ');
     console.log(`⚡ Unblocked auto tasks: ${items}`);
+    // Emit machine-readable event for orchestrators
+    for (const t of unblockedAutoTasks) {
+      console.log(`TRAK_EVENT:UNBLOCKED:${t.id}:${t.title}`);
+    }
   }
 }

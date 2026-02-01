@@ -35,6 +35,10 @@ import { claimsCommand, ClaimsOptions } from './commands/claims.js';
 import { pipelineCommand } from './commands/pipeline.js';
 import { statsCommand, StatsOptions } from './commands/stats.js';
 import { nextCommand, NextOptions } from './commands/next.js';
+import { doCommand, DoOptions } from './commands/do.js';
+import { convoyCreateCommand, convoyAddCommand, convoyShowCommand, convoyReadyCommand, convoyListCommand } from './commands/convoy.js';
+import { mailSendCommand, mailCheckCommand, mailReadCommand, mailListCommand, MailSendOptions, MailCheckOptions, MailListOptions } from './commands/mail.js';
+import { slingCommand, SlingOptions } from './commands/sling.js';
 
 const program = new Command();
 
@@ -342,5 +346,92 @@ program
   .command('pull')
   .description('Git pull and rebuild database from JSONL')
   .action(() => pullCommand());
+
+// trak do — decompose and run
+program
+  .command('do')
+  .description('Decompose natural language into subtasks and run')
+  .argument('<input>', 'Natural language description of what to do')
+  .option('-b, --project <project>', 'Project grouping')
+  .option('--ai', 'Use AI to decompose (requires GEMINI_API_KEY)')
+  .action((input: string, opts: DoOptions) => { doCommand(input, opts); });
+
+// Sling command — dispatch to agent
+program
+  .command('sling [task-id]')
+  .description('Dispatch a task to an agent for autonomous execution')
+  .option('--json', 'Output dispatch payload as JSON')
+  .option('-b, --project <project>', 'Filter by project when auto-picking')
+  .option('--execute', 'Auto-spawn agent (future)')
+  .action((taskId: string | undefined, opts: SlingOptions) => slingCommand(taskId, opts));
+
+// Convoy commands
+const convoy = program
+  .command('convoy')
+  .description('Manage convoys (task batches for agent coordination)');
+
+convoy
+  .command('create')
+  .description('Create a new convoy')
+  .argument('<name>', 'Convoy name')
+  .action((name: string) => { convoyCreateCommand(name); });
+
+convoy
+  .command('add')
+  .description('Add tasks to a convoy')
+  .argument('<convoy-id>', 'Convoy ID')
+  .argument('<task-ids...>', 'Task IDs to add')
+  .action((convoyId: string, taskIds: string[]) => convoyAddCommand(convoyId, taskIds));
+
+convoy
+  .command('show')
+  .description('Show tasks in a convoy')
+  .argument('<convoy-id>', 'Convoy ID')
+  .action((convoyId: string) => convoyShowCommand(convoyId));
+
+convoy
+  .command('ready')
+  .description('Show ready tasks in a convoy')
+  .argument('<convoy-id>', 'Convoy ID')
+  .action((convoyId: string) => convoyReadyCommand(convoyId));
+
+convoy
+  .command('list')
+  .alias('ls')
+  .description('List all convoys')
+  .action(() => convoyListCommand());
+
+// Mail commands
+const mail = program
+  .command('mail')
+  .description('Agent-to-agent mailbox system');
+
+mail
+  .command('send')
+  .description('Send a message to an agent')
+  .argument('<to-agent>', 'Recipient agent name (or "all" for broadcast)')
+  .argument('<message>', 'Message text')
+  .option('-t, --task <id>', 'Link to a task')
+  .action((toAgent: string, message: string, opts: MailSendOptions) => mailSendCommand(toAgent, message, opts));
+
+mail
+  .command('check')
+  .description('Check inbox for unread messages')
+  .option('-a, --agent <name>', 'Agent name')
+  .action((opts: MailCheckOptions) => mailCheckCommand(opts));
+
+mail
+  .command('read')
+  .description('Mark a message as read')
+  .argument('<mail-id>', 'Message ID')
+  .action((mailId: string) => mailReadCommand(mailId));
+
+mail
+  .command('list')
+  .alias('ls')
+  .description('List messages')
+  .option('--agent <name>', 'Filter by agent')
+  .option('--all', 'Show all messages')
+  .action((opts: MailListOptions) => mailListCommand(opts));
 
 program.parse();
