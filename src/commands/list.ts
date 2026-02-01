@@ -8,6 +8,7 @@ export interface ListOptions {
   verbose?: boolean;
   all?: boolean;
   epic?: string;
+  failed?: boolean;
 }
 
 export function listCommand(opts: ListOptions): void {
@@ -22,6 +23,9 @@ export function listCommand(opts: ListOptions): void {
   if (opts.status) {
     sql += ' AND status = ?';
     params.push(opts.status);
+  }
+  if (opts.failed) {
+    sql += " AND status = 'failed'";
   }
   if (opts.tags) {
     sql += ' AND tags LIKE ?';
@@ -61,8 +65,9 @@ export function listCommand(opts: ListOptions): void {
     const age = formatDate(t.updated_at);
     const epicTag = t.is_epic ? '📋 ' : '';
     const agent = t.assigned_to ? ` ${c.cyan}→ ${t.assigned_to}${c.reset}` : '';
+    const retryTag = (t as any).retry_count > 0 ? ` ${c.yellow}⟳ ${(t as any).retry_count}/${(t as any).max_retries ?? 3}${c.reset}` : '';
 
-    console.log(`  ${emoji} ${id} ${prio} ${epicTag}${projectTag}${sc}${title}${c.reset}${agent} ${c.dim}${age}${c.reset}`);
+    console.log(`  ${emoji} ${id} ${prio} ${epicTag}${projectTag}${sc}${title}${c.reset}${agent}${retryTag} ${c.dim}${age}${c.reset}`);
 
     if (opts.verbose) {
       if (t.description) console.log(`    ${c.dim}${truncate(t.description, 70)}${c.reset}`);

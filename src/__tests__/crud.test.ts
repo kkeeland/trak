@@ -86,7 +86,7 @@ describe('list', () => {
   it('hides done tasks by default', () => {
     const out1 = run('create "Done task"', testDir);
     const id = extractId(out1);
-    run(`close ${id}`, testDir);
+    run(`close ${id} --force`, testDir);
     const out = run('list', testDir);
     expect(out).toContain('No tasks found');
   });
@@ -94,7 +94,7 @@ describe('list', () => {
   it('shows done tasks with --all', () => {
     const out1 = run('create "Done task"', testDir);
     const id = extractId(out1);
-    run(`close ${id}`, testDir);
+    run(`close ${id} --force`, testDir);
     const out = run('list --all', testDir);
     expect(out).toContain('Done task');
   });
@@ -169,7 +169,7 @@ describe('close', () => {
   it('marks task as done', () => {
     const out1 = run('create "Close me"', testDir);
     const id = extractId(out1);
-    run(`close ${id}`, testDir);
+    run(`close ${id} --force`, testDir);
     const show = run(`show ${id}`, testDir);
     expect(show).toContain('DONE');
   });
@@ -177,7 +177,7 @@ describe('close', () => {
   it('updates timestamp on close', () => {
     const out1 = run('create "Close ts"', testDir);
     const id = extractId(out1);
-    run(`close ${id}`, testDir);
+    run(`close ${id} --force`, testDir);
     const show = run(`show ${id}`, testDir);
     expect(show).toContain('Updated:');
   });
@@ -185,8 +185,8 @@ describe('close', () => {
   it('is idempotent (already done)', () => {
     const out1 = run('create "Already done"', testDir);
     const id = extractId(out1);
-    run(`close ${id}`, testDir);
-    const out = run(`close ${id}`, testDir);
+    run(`close ${id} --force`, testDir);
+    const out = run(`close ${id} --force`, testDir);
     expect(out).toContain('Already done');
   });
 

@@ -1,4 +1,4 @@
-import { getDb, Task, afterWrite } from '../db.js';
+import { getDb, Task, afterWrite, resolveTimeout } from '../db.js';
 import { c, STATUS_EMOJI } from '../utils.js';
 import { execSync } from 'child_process';
 
@@ -18,8 +18,25 @@ export interface PolecatOptions {
  * and either closes the task (success) or resets it (failure). Then it dies.
  */
 export async function polecatCommand(taskId: string, opts: PolecatOptions): Promise<void> {
-  const timeoutSec = parseInt(opts.timeout || '300', 10);
   const startTime = Date.now();
+
+  const db = getDb();
+
+  // --- Resolve task first (needed for per-task timeout) ---
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? OR id LIKE ?').get(taskId, `%${taskId}%`) as Task | undefined;
+
+  if (!task) {
+    console.error(`${c.red}✗ Task not found: ${taskId}${c.reset}`);
+    process.exit(1);
+  }
+
+  if (task.status === 'done') {
+    console.log(`${c.yellow}⚠${c.reset} Task already done: ${task.id}`);
+    process.exit(0);
+  }
+
+  // Resolve timeout: CLI flag → task.timeout_seconds → config → 15min default
+  const timeoutSec = resolveTimeout({ cliTimeout: opts.timeout, task });
 
   // Self-destruct timer
   const timer = setTimeout(() => {
@@ -39,23 +56,6 @@ export async function polecatCommand(taskId: string, opts: PolecatOptions): Prom
   };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
-
-  const db = getDb();
-
-  // --- Resolve task ---
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ? OR id LIKE ?').get(taskId, `%${taskId}%`) as Task | undefined;
-
-  if (!task) {
-    clearTimeout(timer);
-    console.error(`${c.red}✗ Task not found: ${taskId}${c.reset}`);
-    process.exit(1);
-  }
-
-  if (task.status === 'done') {
-    clearTimeout(timer);
-    console.log(`${c.yellow}⚠${c.reset} Task already done: ${task.id}`);
-    process.exit(0);
-  }
 
   // --- Announce ---
   console.log(`\n${c.bold}🐾 polecat${c.reset} — ephemeral worker agent`);
@@ -181,17 +181,17 @@ async function executeWork(task: Task, instruction: string, opts: PolecatOptions
       task: instruction,
       label: `polecat-${task.id}`,
       cleanup: 'delete',
-      runTimeoutSeconds: parseInt(opts.timeout || '300', 10),
+      runTimeoutSeconds: resolveTimeout({ cliTimeout: opts.timeout, task }),
       model: opts.model,
     });
     fs.writeFileSync(tmpFile, payload);
 
     console.log(`${c.dim}Spawning via clawdbot...${c.reset}`);
     const result = execSync(
-      `clawdbot session spawn --label "polecat-${task.id}" --task-file "${tmpFile}" --cleanup delete --timeout ${opts.timeout || '300'} 2>&1`,
+      `clawdbot session spawn --label "polecat-${task.id}" --task-file "${tmpFile}" --cleanup delete --timeout ${resolveTimeout({ cliTimeout: opts.timeout, task })} 2>&1`,
       {
         encoding: 'utf-8',
-        timeout: (parseInt(opts.timeout || '300', 10) + 30) * 1000,
+        timeout: (resolveTimeout({ cliTimeout: opts.timeout, task }) + 30) * 1000,
         stdio: ['pipe', 'pipe', 'pipe'],
       }
     );

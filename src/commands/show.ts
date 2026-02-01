@@ -43,6 +43,22 @@ export function showCommand(id: string): void {
     const pctColor = pct === 100 ? c.green : pct >= 50 ? c.yellow : c.red;
     console.log(`  ${c.dim}Children:${c.reset}  ${total} tasks, ${pctColor}${done}/${total} complete (${pct}%)${c.reset}`);
   }
+  // Retry info
+  if ((task as any).retry_count > 0 || task.status === 'failed') {
+    const retryCount = (task as any).retry_count || 0;
+    const maxRetries = (task as any).max_retries ?? 3;
+    const retryColor = task.status === 'failed' ? c.red : c.yellow;
+    console.log(`  ${c.dim}Retries:${c.reset}   ${retryColor}${retryCount}/${maxRetries}${c.reset}${task.status === 'failed' ? ` ${c.red}(permanently failed)${c.reset}` : ''}`);
+    if ((task as any).last_failure_reason) {
+      console.log(`  ${c.dim}Last fail:${c.reset} ${c.red}${(task as any).last_failure_reason}${c.reset}`);
+    }
+    if ((task as any).retry_after) {
+      const retryAfter = new Date((task as any).retry_after);
+      const now = new Date();
+      const ready = retryAfter <= now;
+      console.log(`  ${c.dim}Retry at:${c.reset}  ${ready ? c.green : c.yellow}${(task as any).retry_after}${ready ? ' (ready)' : ''}${c.reset}`);
+    }
+  }
   if (task.autonomy && task.autonomy !== 'manual') console.log(`  ${c.dim}Autonomy:${c.reset}  ${task.autonomy}`);
   if (task.budget_usd !== null && task.budget_usd !== undefined) {
     const budgetColor = task.cost_usd > task.budget_usd ? c.red : c.green;

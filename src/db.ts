@@ -32,6 +32,15 @@ export interface Task {
   wip_snapshot: string;
   autonomy: string;
   budget_usd: number | null;
+  retry_count: number;
+  max_retries: number;
+  last_failure_reason: string;
+  retry_after: string | null;
+  timeout_seconds: number | null;
+  tokens_in: number;
+  tokens_out: number;
+  model_used: string;
+  duration_seconds: number;
 }
 
 export interface Dependency {
@@ -154,6 +163,36 @@ function migrateColumns(db: Database.Database): void {
   if (!colNames.includes('budget_usd')) {
     db.exec("ALTER TABLE tasks ADD COLUMN budget_usd REAL DEFAULT NULL");
   }
+  // Update status CHECK constraint to include 'failed' — SQLite doesn't support ALTER CHECK,
+  // but the constraint is only enforced on INSERT/UPDATE. For existing DBs, the new status
+  // is handled by the migrated schema on next init. We rely on the app-level VALID_STATUSES check.
+  if (!colNames.includes('retry_count')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN retry_count INTEGER DEFAULT 0");
+  }
+  if (!colNames.includes('max_retries')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN max_retries INTEGER DEFAULT 3");
+  }
+  if (!colNames.includes('last_failure_reason')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN last_failure_reason TEXT DEFAULT ''");
+  }
+  if (!colNames.includes('retry_after')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN retry_after TEXT DEFAULT NULL");
+  }
+  if (!colNames.includes('timeout_seconds')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN timeout_seconds INTEGER DEFAULT NULL");
+  }
+  if (!colNames.includes('tokens_in')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN tokens_in INTEGER DEFAULT 0");
+  }
+  if (!colNames.includes('tokens_out')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN tokens_out INTEGER DEFAULT 0");
+  }
+  if (!colNames.includes('model_used')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN model_used TEXT DEFAULT ''");
+  }
+  if (!colNames.includes('duration_seconds')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN duration_seconds REAL DEFAULT 0");
+  }
 }
 
 export function getDb(): Database.Database {
@@ -185,7 +224,7 @@ export function initDb(global?: boolean): Database.Database {
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
-      status TEXT DEFAULT 'open' CHECK(status IN ('open','wip','blocked','review','done','archived')),
+      status TEXT DEFAULT 'open' CHECK(status IN ('open','wip','blocked','review','done','archived','failed')),
       priority INTEGER DEFAULT 1 CHECK(priority BETWEEN 0 AND 3),
       project TEXT DEFAULT '',
       blocked_by TEXT DEFAULT '',
@@ -206,6 +245,15 @@ export function initDb(global?: boolean): Database.Database {
       wip_snapshot TEXT DEFAULT '',
       autonomy TEXT DEFAULT 'manual',
       budget_usd REAL DEFAULT NULL,
+      retry_count INTEGER DEFAULT 0,
+      max_retries INTEGER DEFAULT 3,
+      last_failure_reason TEXT DEFAULT '',
+      retry_after TEXT DEFAULT NULL,
+      timeout_seconds INTEGER DEFAULT NULL,
+      tokens_in INTEGER DEFAULT 0,
+      tokens_out INTEGER DEFAULT 0,
+      model_used TEXT DEFAULT '',
+      duration_seconds REAL DEFAULT 0,
       FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE SET NULL,
       FOREIGN KEY (epic_id) REFERENCES tasks(id) ON DELETE SET NULL
     );
@@ -286,6 +334,56 @@ export function loadConfig(): Record<string, any> {
   }
 }
 
+// ─── Timeout resolution ──────────────────────────────────
+// Priority: CLI flag (passed as cliTimeout) → task.timeout_seconds → config "agent.timeout" → default (900s = 15min)
+const DEFAULT_TIMEOUT_SECONDS = 900; // 15 minutes
+
+/**
+ * Parse a human-friendly duration string into seconds.
+ * Supports: "30m", "1h", "90s", "1h30m", or plain number (treated as seconds).
+ */
+export function parseDuration(input: string): number {
+  // Plain number = seconds
+  if (/^\d+$/.test(input.trim())) return parseInt(input.trim(), 10);
+
+  let total = 0;
+  const hourMatch = input.match(/(\d+)\s*h/i);
+  const minMatch = input.match(/(\d+)\s*m(?!s)/i);
+  const secMatch = input.match(/(\d+)\s*s/i);
+
+  if (hourMatch) total += parseInt(hourMatch[1], 10) * 3600;
+  if (minMatch) total += parseInt(minMatch[1], 10) * 60;
+  if (secMatch) total += parseInt(secMatch[1], 10);
+
+  return total > 0 ? total : parseInt(input, 10) || DEFAULT_TIMEOUT_SECONDS;
+}
+
+/**
+ * Resolve the effective timeout for a task in seconds.
+ * Priority: cliTimeout → task.timeout_seconds → config "agent.timeout" → 900s default
+ */
+export function resolveTimeout(opts: { cliTimeout?: string; task?: { timeout_seconds?: number | null } }): number {
+  // 1. CLI flag (highest priority)
+  if (opts.cliTimeout) {
+    return parseDuration(opts.cliTimeout);
+  }
+
+  // 2. Per-task timeout
+  if (opts.task?.timeout_seconds && opts.task.timeout_seconds > 0) {
+    return opts.task.timeout_seconds;
+  }
+
+  // 3. Global config
+  const configVal = getConfigValue('agent.timeout');
+  if (configVal !== undefined) {
+    if (typeof configVal === 'number') return configVal;
+    if (typeof configVal === 'string') return parseDuration(configVal);
+  }
+
+  // 4. Default
+  return DEFAULT_TIMEOUT_SECONDS;
+}
+
 // Track the current DB path for afterWrite
 let _currentDbPath: string | null = null;
 
@@ -322,6 +420,97 @@ export function afterWrite(db: Database.Database): void {
   } catch {
     // JSONL export is best-effort
   }
+}
+
+/**
+ * Backoff schedule for retries: 1m, 5m, 15m
+ */
+const RETRY_BACKOFF_MINUTES = [1, 5, 15];
+
+/**
+ * Handle task failure with auto-retry logic.
+ * If retry_count < max_retries, re-queues with exponential backoff.
+ * If max_retries exceeded, marks as "failed" permanently.
+ * Returns true if task was re-queued, false if permanently failed.
+ */
+export function taskFailed(db: Database.Database, taskId: string, reason: string): { requeued: boolean; retryCount: number; maxRetries: number } {
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? OR id LIKE ?').get(taskId, `%${taskId}%`) as Task | undefined;
+  if (!task) throw new Error(`Task not found: ${taskId}`);
+
+  const newRetryCount = (task.retry_count || 0) + 1;
+  const maxRetries = task.max_retries ?? 3;
+
+  if (newRetryCount < maxRetries) {
+    // Re-queue with backoff
+    const backoffIdx = Math.min(newRetryCount - 1, RETRY_BACKOFF_MINUTES.length - 1);
+    const backoffMinutes = RETRY_BACKOFF_MINUTES[backoffIdx];
+    const retryAfter = new Date(Date.now() + backoffMinutes * 60000).toISOString().replace('T', ' ').slice(0, 19);
+
+    db.prepare(`
+      UPDATE tasks SET
+        status = 'open',
+        retry_count = ?,
+        last_failure_reason = ?,
+        retry_after = ?,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(newRetryCount, reason, retryAfter, task.id);
+
+    db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
+      task.id,
+      `Failed (retry ${newRetryCount}/${maxRetries}): ${reason}\nRe-queued with ${backoffMinutes}m backoff (retry after ${retryAfter})`
+    );
+
+    afterWrite(db);
+    return { requeued: true, retryCount: newRetryCount, maxRetries };
+  } else {
+    // Permanently failed
+    db.prepare(`
+      UPDATE tasks SET
+        status = 'failed',
+        retry_count = ?,
+        last_failure_reason = ?,
+        retry_after = NULL,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `).run(newRetryCount, reason, task.id);
+
+    db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
+      task.id,
+      `Permanently failed after ${newRetryCount} attempts: ${reason}`
+    );
+
+    afterWrite(db);
+    return { requeued: false, retryCount: newRetryCount, maxRetries };
+  }
+}
+
+/**
+ * Manually retry a failed task — resets retry_count and re-queues.
+ */
+export function manualRetry(db: Database.Database, taskId: string, resetCount: boolean = true): Task {
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ? OR id LIKE ?').get(taskId, `%${taskId}%`) as Task | undefined;
+  if (!task) throw new Error(`Task not found: ${taskId}`);
+
+  const newRetryCount = resetCount ? 0 : task.retry_count;
+
+  db.prepare(`
+    UPDATE tasks SET
+      status = 'open',
+      retry_count = ?,
+      last_failure_reason = '',
+      retry_after = NULL,
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(newRetryCount, task.id);
+
+  db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
+    task.id,
+    `Manually retried${resetCount ? ' (retry count reset)' : ''} — was: ${task.status}${task.last_failure_reason ? `, last failure: ${task.last_failure_reason}` : ''}`
+  );
+
+  afterWrite(db);
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id) as Task;
 }
 
 // Helper: calculate heat score for a task

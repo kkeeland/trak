@@ -90,7 +90,7 @@ describe('JSONL shadow write', () => {
   it('JSONL updates on close', () => {
     const out = run('create "Close JSONL"', testDir);
     const id = extractId(out);
-    run(`close ${id}`, testDir);
+    run(`close ${id} --force`, testDir);
     const jsonlPath = path.join(testDir, '.trak', 'trak.jsonl');
     const record = JSON.parse(fs.readFileSync(jsonlPath, 'utf-8').trim());
     expect(record.status).toBe('done');

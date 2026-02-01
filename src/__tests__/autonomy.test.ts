@@ -107,7 +107,7 @@ describe('event chain on close', () => {
     const childOut = runOrThrow('create "Blocked auto" --auto', cwd);
     const childId = extractId(childOut);
     runOrThrow(`dep add ${childId} ${parentId}`, cwd);
-    const closeOut = runOrThrow(`close ${parentId}`, cwd);
+    const closeOut = runOrThrow(`close ${parentId} --force`, cwd);
     expect(closeOut).toContain('⚡ Unblocked auto tasks:');
     expect(closeOut).toContain(childId);
   });
@@ -118,7 +118,7 @@ describe('event chain on close', () => {
     const childOut = runOrThrow('create "Blocked manual"', cwd);
     const childId = extractId(childOut);
     runOrThrow(`dep add ${childId} ${parentId}`, cwd);
-    const closeOut = runOrThrow(`close ${parentId}`, cwd);
+    const closeOut = runOrThrow(`close ${parentId} --force`, cwd);
     expect(closeOut).not.toContain('⚡ Unblocked auto tasks:');
   });
 });

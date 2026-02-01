@@ -8,9 +8,10 @@ export const STATUS_EMOJI: Record<string, string> = {
   review: '👀',
   done: '✅',
   archived: '📦',
+  failed: '💀',
 };
 
-export const VALID_STATUSES = ['open', 'wip', 'blocked', 'review', 'done', 'archived'];
+export const VALID_STATUSES = ['open', 'wip', 'blocked', 'review', 'done', 'archived', 'failed'];
 
 // Project colors — cycle through these
 const PROJECT_COLORS = [
@@ -88,6 +89,7 @@ export function statusColor(status: string): string {
     case 'review': return c.magenta;
     case 'done': return c.green;
     case 'archived': return c.gray;
+    case 'failed': return c.red;
     default: return c.white;
   }
 }

@@ -36,7 +36,7 @@ describe('epic list', () => {
     const epicId = extractId(epicOut);
     const taskOut = run(`create "Sub" --epic ${epicId}`, testDir);
     const taskId = extractId(taskOut);
-    run(`close ${taskId}`, testDir);
+    run(`close ${taskId} --force`, testDir);
     const out = run('epic list', testDir);
     expect(out).toContain('1/1');
   });

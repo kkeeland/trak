@@ -79,7 +79,7 @@ describe('ready', () => {
     const cOut = run('create "Child"', testDir);
     const childId = extractId(cOut);
     run(`dep add ${childId} ${parentId}`, testDir);
-    run(`close ${parentId}`, testDir);
+    run(`close ${parentId} --force`, testDir);
     const out = run('ready', testDir);
     expect(out).toContain('Child');
   });

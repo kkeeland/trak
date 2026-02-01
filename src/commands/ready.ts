@@ -13,6 +13,7 @@ export function readyCommand(opts: ReadyOptions): void {
     SELECT t.* FROM tasks t
     WHERE t.status IN ('open', 'wip')
     AND t.blocked_by = ''
+    AND (t.retry_after IS NULL OR t.retry_after <= datetime('now'))
     AND NOT EXISTS (
       SELECT 1 FROM dependencies d
       JOIN tasks dep ON dep.id = d.parent_id

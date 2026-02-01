@@ -1,6 +1,7 @@
-import { getDb, Task, afterWrite } from '../db.js';
+import { getDb, Task, afterWrite, resolveTimeout } from '../db.js';
 import { c } from '../utils.js';
-import { execSync, spawn } from 'child_process';
+import { discoverGateway, spawnAgent, probeGateway, type GatewayConfig, type SpawnResult } from '../gateway.js';
+import { acquireLock } from '../locks.js';
 
 export interface RunOptions {
   project?: string;
@@ -8,6 +9,7 @@ export interface RunOptions {
   maxAgents?: string;
   model?: string;
   watch?: boolean;
+  timeout?: string;
 }
 
 interface ReadyTask {
@@ -18,6 +20,7 @@ interface ReadyTask {
   priority: number;
   tags: string;
   convoy: string | null;
+  timeout_seconds: number | null;
 }
 
 function getReadyAutoTasks(project?: string): ReadyTask[] {
@@ -83,6 +86,51 @@ Do NOT work on other tasks — focus only on this one.`;
   return instruction;
 }
 
+async function dispatchTask(
+  gw: GatewayConfig,
+  task: ReadyTask,
+  opts: RunOptions,
+): Promise<{ id: string; title: string; label: string; sessionKey?: string } | null> {
+  // Check workspace lock before dispatching
+  const cwd = process.cwd();
+  const lockResult = acquireLock(cwd, task.id, 'trak-run');
+  if (!lockResult.acquired) {
+    const holder = lockResult.holder;
+    console.log(`  ${c.red}🔒${c.reset} Workspace locked by task ${c.bold}${holder.taskId}${c.reset} (agent: ${holder.agent}, PID: ${holder.pid})`);
+    console.log(`    ${c.dim}Skipping ${task.id} — use 'trak unlock ${cwd}' to force-release${c.reset}`);
+    return null;
+  }
+
+  claimTask(task.id);
+
+  const agentTask = buildAgentTask(task);
+  const label = `trak-${task.id}`;
+
+  const timeoutSec = resolveTimeout({ cliTimeout: opts.timeout, task });
+
+  try {
+    const result: SpawnResult = await spawnAgent(gw, {
+      task: agentTask,
+      label,
+      cleanup: 'delete',
+      runTimeoutSeconds: timeoutSec,
+      ...(opts.model ? { model: opts.model } : {}),
+    });
+
+    if (result.ok) {
+      console.log(`  ${c.green}✓${c.reset} Spawned agent for ${c.bold}${task.id}${c.reset} — ${task.title}`);
+      console.log(`    ${c.dim}Label: ${label}${result.childSessionKey ? ` | Session: ${result.childSessionKey}` : ''}${c.reset}`);
+      return { id: task.id, title: task.title, label, sessionKey: result.childSessionKey };
+    } else {
+      console.error(`  ${c.red}✗${c.reset} Gateway rejected ${c.bold}${task.id}${c.reset}: ${result.error}`);
+      return null;
+    }
+  } catch (err: any) {
+    console.error(`  ${c.red}✗${c.reset} Failed to dispatch ${task.id}: ${err.message}`);
+    return null;
+  }
+}
+
 export async function runCommand(opts: RunOptions): Promise<void> {
   const maxAgents = parseInt(opts.maxAgents || '3', 10);
   const readyTasks = getReadyAutoTasks(opts.project);
@@ -108,63 +156,45 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     console.log(`  ${c.dim}Convoy:${c.reset} ${convoyName}`);
   }
 
+  // Discover gateway
+  const gw = discoverGateway();
+  console.log(`  ${c.dim}Gateway:${c.reset} ${gw.url}`);
+  console.log(`  ${c.dim}Auth:${c.reset} ${gw.token ? 'token ✓' : 'none'}`);
+
   console.log(`\n${c.dim}${'─'.repeat(50)}${c.reset}\n`);
 
   if (opts.dryRun) {
     for (const task of tasksToRun) {
+      const label = `trak-${task.id}`;
+      const timeoutSec = resolveTimeout({ cliTimeout: opts.timeout, task });
       console.log(`  ${c.yellow}[dry-run]${c.reset} Would dispatch: ${c.bold}${task.id}${c.reset} — ${task.title}`);
+      console.log(`    ${c.dim}Label: ${label} | Timeout: ${timeoutSec}s | Cleanup: delete${c.reset}`);
     }
+
+    // Probe gateway connectivity
+    const reachable = await probeGateway(gw);
+    console.log(`\n  ${c.dim}Gateway reachable:${c.reset} ${reachable ? `${c.green}yes${c.reset}` : `${c.red}no${c.reset}`}`);
     console.log(`\n${c.dim}No agents spawned (dry run)${c.reset}`);
     return;
   }
 
+  // Probe gateway before dispatching
+  const gwReachable = await probeGateway(gw);
+  if (!gwReachable) {
+    console.error(`\n${c.red}✗${c.reset} Cannot reach Clawdbot gateway at ${gw.url}`);
+    console.error(`  ${c.dim}Check: clawdbot gateway status${c.reset}`);
+    console.error(`  ${c.dim}Or set CLAWDBOT_GATEWAY_URL / CLAWDBOT_GATEWAY_TOKEN env vars${c.reset}`);
+    process.exit(1);
+  }
+
+  console.log(`  ${c.dim}Gateway connected${c.reset} ${c.green}✓${c.reset}\n`);
+
   // Dispatch each task
-  const dispatched: { id: string; title: string; label: string }[] = [];
+  const dispatched: { id: string; title: string; label: string; sessionKey?: string }[] = [];
 
   for (const task of tasksToRun) {
-    // Claim the task
-    claimTask(task.id);
-
-    const agentTask = buildAgentTask(task);
-    const label = `trak-${task.id}`;
-
-    try {
-      // Use clawdbot gateway API to spawn sub-agent
-      // This calls the Clawdbot sessions_spawn equivalent via CLI
-      const payload = JSON.stringify({
-        task: agentTask,
-        label,
-        cleanup: 'delete',
-        runTimeoutSeconds: 300,
-      });
-
-      // Write payload to temp file to avoid shell escaping issues
-      const tmpFile = `/tmp/trak-run-${task.id}.json`;
-      const fs = await import('fs');
-      fs.writeFileSync(tmpFile, payload);
-
-      // Use the clawdbot CLI to spawn if available, otherwise output instructions
-      try {
-        execSync('which clawdbot', { stdio: 'ignore' });
-        // Spawn via clawdbot gateway
-        const result = execSync(
-          `clawdbot session spawn --label "${label}" --task-file "${tmpFile}" --cleanup delete --timeout 300 2>&1`,
-          { encoding: 'utf-8', timeout: 10000 }
-        ).trim();
-        console.log(`  ${c.green}✓${c.reset} Spawned agent for ${c.bold}${task.id}${c.reset} — ${task.title}`);
-        console.log(`    ${c.dim}Label: ${label}${c.reset}`);
-        dispatched.push({ id: task.id, title: task.title, label });
-      } catch {
-        // Clawdbot not available or spawn failed — output the task for manual dispatch
-        console.log(`  ${c.yellow}⚠${c.reset} Claimed ${c.bold}${task.id}${c.reset} — ${task.title}`);
-        console.log(`    ${c.dim}Agent spawn not available. Run manually or pipe to orchestrator.${c.reset}`);
-        // Output machine-readable dispatch event
-        console.log(`TRAK_DISPATCH:${task.id}:${label}:${tmpFile}`);
-        dispatched.push({ id: task.id, title: task.title, label });
-      }
-    } catch (err: any) {
-      console.error(`  ${c.red}✗${c.reset} Failed to dispatch ${task.id}: ${err.message}`);
-    }
+    const result = await dispatchTask(gw, task, opts);
+    if (result) dispatched.push(result);
   }
 
   console.log(`\n${c.dim}${'─'.repeat(50)}${c.reset}`);
@@ -206,36 +236,14 @@ export async function runCommand(opts: RunOptions): Promise<void> {
 
         console.log(`\n${c.green}[${now}]${c.reset} ${newReady.length} new task(s) ready`);
 
-        const maxAgents = parseInt(opts.maxAgents || '3', 10);
-        const batch = newReady.slice(0, maxAgents - alreadyDispatched.size);
+        const currentMax = parseInt(opts.maxAgents || '3', 10);
+        const batch = newReady.slice(0, currentMax - alreadyDispatched.size);
 
         for (const task of batch) {
-          claimTask(task.id);
           alreadyDispatched.add(task.id);
-
-          const agentTask = buildAgentTask(task);
-          const label = `trak-${task.id}`;
-
-          try {
-            const fs = await import('fs');
-            const tmpFile = `/tmp/trak-run-${task.id}.json`;
-            fs.writeFileSync(tmpFile, JSON.stringify({
-              task: agentTask, label, cleanup: 'delete', runTimeoutSeconds: 300,
-            }));
-
-            try {
-              execSync('which clawdbot', { stdio: 'ignore' });
-              execSync(
-                `clawdbot session spawn --label "${label}" --task-file "${tmpFile}" --cleanup delete --timeout 300 2>&1`,
-                { encoding: 'utf-8', timeout: 10000 }
-              );
-              console.log(`  ${c.green}✓${c.reset} Spawned agent for ${c.bold}${task.id}${c.reset} — ${task.title}`);
-            } catch {
-              console.log(`  ${c.yellow}⚠${c.reset} Claimed ${c.bold}${task.id}${c.reset} — ${task.title}`);
-              console.log(`TRAK_DISPATCH:${task.id}:${label}:${tmpFile}`);
-            }
-          } catch (err: any) {
-            console.error(`  ${c.red}✗${c.reset} Failed to dispatch ${task.id}: ${err.message}`);
+          const result = await dispatchTask(gw, task, opts);
+          if (result) {
+            dispatched.push(result);
           }
         }
       }

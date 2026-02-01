@@ -44,6 +44,8 @@ import { planCommand, PlanOptions } from './commands/plan.js';
 import { polecatCommand, PolecatOptions } from './commands/polecat.js';
 import { helpCommand } from './commands/help-request.js';
 import { mergeCommand } from './commands/merge.js';
+import { retryCommand, failCommand, RetryOptions } from './commands/retry.js';
+import { locksCommand, unlockCommand } from './commands/locks.js';
 
 const program = new Command();
 
@@ -85,6 +87,7 @@ program
   .option('--epic <id>', 'Filter by epic')
   .option('-v, --verbose', 'Show details')
   .option('-a, --all', 'Include done/archived')
+  .option('--failed', 'Show only failed tasks')
   .action((opts: ListOptions) => listCommand(opts));
 
 program
@@ -149,10 +152,12 @@ dep
 
 program
   .command('close')
-  .description('Mark task as done')
+  .description('Mark task as done (requires --verify or prior verification)')
   .argument('<id>', 'Task ID')
   .option('--cost <amount>', 'Log cost in USD (additive)')
   .option('--tokens <count>', 'Log token usage (additive)')
+  .option('--verify', 'Run verification checks before closing (build, tests, verify_command)')
+  .option('--force', 'Bypass verification gate (human override)')
   .action((id: string, opts: CloseOptions) => closeCommand(id, opts));
 
 program
@@ -168,10 +173,18 @@ program
 
 program
   .command('cost')
-  .description('Cost tracking by project')
+  .description('Cost tracking — total, per-task, or by project/label')
+  .argument('[id]', 'Task ID to show cost for (optional)')
   .option('-b, --project <project>', 'Filter by project')
+  .option('-l, --label <label>', 'Filter by label/tag')
   .option('-w, --week', 'Last 7 days only')
-  .action((opts: CostOptions) => costCommand(opts));
+  .action((id: string | undefined, opts: CostOptions) => {
+    if (id) {
+      costCommand(id, opts);
+    } else {
+      costCommand(opts);
+    }
+  });
 
 program
   .command('heat')
@@ -379,6 +392,7 @@ program
   .option('--dry-run', 'Preview what would be dispatched')
   .option('--max-agents <n>', 'Max concurrent agents (default: 3)')
   .option('--model <model>', 'Model for spawned agents')
+  .option('--timeout <duration>', 'Agent timeout (e.g. 30m, 1h, 900). Overrides task/config defaults')
   .option('-w, --watch', 'Watch mode: poll for newly ready tasks and auto-dispatch')
   .action((opts: RunOptions) => runCommand(opts));
 
@@ -394,7 +408,7 @@ program
   .command('polecat')
   .description('Run as an ephemeral worker agent for a task (sling dispatches, polecat IS the worker)')
   .argument('<task-id>', 'Task ID to work on')
-  .option('--timeout <seconds>', 'Kill self after N seconds (default: 300)', '300')
+  .option('--timeout <duration>', 'Kill self after duration (e.g. 30m, 1h, 900). Default: task/config/15m')
   .option('--model <model>', 'Model for the agent runtime')
   .option('--dry-run', 'Show work instruction without executing')
   .action((taskId: string, opts: PolecatOptions) => polecatCommand(taskId, opts));
@@ -476,10 +490,37 @@ program
   .argument('<message>', 'Help request message')
   .action((taskId: string, message: string) => helpCommand(taskId, message));
 
+// Retry / fail commands
+program
+  .command('retry')
+  .description('Manually retry a failed or timed-out task (resets retry count, re-queues as open)')
+  .argument('<id>', 'Task ID')
+  .option('--no-reset', 'Keep current retry count instead of resetting to 0')
+  .action((id: string, opts: RetryOptions) => retryCommand(id, opts));
+
+program
+  .command('fail')
+  .description('Mark a task as failed (triggers auto-retry with backoff if retries remain)')
+  .argument('<id>', 'Task ID')
+  .option('-r, --reason <text>', 'Failure reason')
+  .action((id: string, opts: { reason?: string }) => failCommand(id, opts));
+
 // Merge conflicted JSONL
 program
   .command('merge')
   .description('Resolve git merge conflicts in .trak/trak.jsonl (last-write-wins per task)')
   .action(() => mergeCommand());
+
+// Workspace lock commands
+program
+  .command('locks')
+  .description('Show active workspace locks')
+  .action(() => locksCommand());
+
+program
+  .command('unlock')
+  .description('Force-release a workspace lock')
+  .argument('<repo>', 'Repo path, basename, or task ID')
+  .action((repo: string) => unlockCommand(repo));
 
 program.parse();

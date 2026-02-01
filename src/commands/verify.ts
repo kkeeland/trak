@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { getDb, Task } from '../db.js';
+import { getDb, Task, resolveTimeout } from '../db.js';
 import { c } from '../utils.js';
 
 export interface VerifyOptions {
@@ -55,7 +55,7 @@ function runVerifyCommand(db: ReturnType<typeof getDb>, task: Task, command: str
     stdout = execSync(command, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 300000, // 5 min timeout
+      timeout: resolveTimeout({}) * 1000, // configurable timeout (default 15min)
     });
     exitCode = 0;
   } catch (err: any) {
