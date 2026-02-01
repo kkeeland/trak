@@ -73,7 +73,7 @@ describe('convoy system', () => {
     const t1 = extractId(runOrThrow('create "Done Task"', cwd));
     const t2 = extractId(runOrThrow('create "Open Task"', cwd));
     runOrThrow(`convoy add ${convoyId} ${t1} ${t2}`, cwd);
-    runOrThrow(`close ${t1}`, cwd);
+    runOrThrow(`close ${t1} --force`, cwd);
 
     const listOut = runOrThrow('convoy list', cwd);
     expect(listOut).toContain('1/2 done');

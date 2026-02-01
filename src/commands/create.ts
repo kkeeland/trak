@@ -1,4 +1,4 @@
-import { getDb, Task, afterWrite, getConfigValue } from '../db.js';
+import { getDb, Task, afterWrite, getConfigValue, parseDuration } from '../db.js';
 import { generateId, c, STATUS_EMOJI } from '../utils.js';
 import { hookTaskCreated } from '../hooks.js';
 
@@ -15,6 +15,7 @@ export interface CreateOptions {
   review?: boolean;
   approve?: boolean;
   budget?: string;
+  timeout?: string;
 }
 
 export function createCommand(title: string, opts: CreateOptions): void {
