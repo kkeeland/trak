@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { getDb, Task, LogEntry, Dependency } from '../db.js';
+import { getDb, initDb, dbExists, Task, LogEntry, Dependency } from '../db.js';
 import { parseJsonl, importFromJsonl } from '../jsonl.js';
+import { hasConflictMarkers, resolveConflicts } from '../merge.js';
 import { c } from '../utils.js';
 
 interface ImportData {
@@ -28,8 +29,38 @@ export function importCommand(file?: string): void {
     process.exit(1);
   }
 
+  // Auto-init DB if JSONL exists but DB doesn't (common after git clone)
+  if (!dbExists()) {
+    initDb();
+    console.log(`${c.dim}Auto-initialized trak database for import${c.reset}`);
+  }
+
   // Detect JSONL vs JSON
   if (file.endsWith('.jsonl')) {
+    const content = fs.readFileSync(file, 'utf-8');
+    
+    // Check for git merge conflict markers
+    if (hasConflictMarkers(content)) {
+      console.log(`${c.yellow}⚠${c.reset}  Merge conflicts detected in ${file} — resolving with last-write-wins...`);
+      const mergeResult = resolveConflicts(content);
+      
+      // Log conflict resolutions
+      for (const r of mergeResult.resolutions) {
+        console.log(`  ${c.yellow}conflict${c.reset} ${r.taskId}: ${r.winner} won (ours=${r.oursUpdated}, theirs=${r.theirsUpdated})`);
+      }
+      
+      const db = getDb();
+      const result = importFromJsonl(db, mergeResult.records);
+      console.log(`${c.green}✓${c.reset} Imported from ${file} (${mergeResult.resolutions.length} conflicts resolved)`);
+      console.log(`  ${result.tasks} tasks, ${result.deps} dependencies, ${result.logs} log entries`);
+      
+      // Rewrite the file without conflict markers
+      const cleanContent = mergeResult.records.map(r => JSON.stringify(r)).join('\n') + '\n';
+      fs.writeFileSync(file, cleanContent);
+      console.log(`  ${c.green}✓${c.reset} Rewrote ${file} with resolved content`);
+      return;
+    }
+    
     const records = parseJsonl(file);
     const db = getDb();
     const result = importFromJsonl(db, records);

@@ -7,7 +7,7 @@
     "trak": "./dist/cli.js"
   },
   "scripts": {
-    "build": "./node_modules/.bin/tsc",
+    "build": "./node_modules/.bin/tsc && ./node_modules/.bin/esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.bundle.js --external:better-sqlite3 --format=cjs --minify 2>/dev/null",
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
     "bench": "node benchmarks/bench.js",
@@ -41,6 +41,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.7",
+    "esbuild": "^0.27.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },

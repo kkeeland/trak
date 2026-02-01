@@ -34,6 +34,7 @@ import { claimCommand, ClaimOptions } from './commands/claim.js';
 import { claimsCommand, ClaimsOptions } from './commands/claims.js';
 import { pipelineCommand } from './commands/pipeline.js';
 import { statsCommand, StatsOptions } from './commands/stats.js';
+import { nextCommand, NextOptions } from './commands/next.js';
 
 const program = new Command();
 
@@ -59,6 +60,10 @@ program
   .option('--epic <id>', 'Parent epic ID')
   .option('-t, --tags <tags>', 'Comma-separated tags')
   .option('-s, --session <label>', 'Agent session label')
+  .option('--auto', 'Set autonomy to auto (agent can execute without approval)')
+  .option('--review', 'Set autonomy to review (agent executes, human reviews)')
+  .option('--approve', 'Set autonomy to approve (human must approve before execution)')
+  .option('--budget <amount>', 'Budget ceiling in USD')
   .action((title: string, opts: CreateOptions) => createCommand(title, opts));
 
 program
@@ -78,6 +83,13 @@ program
   .description('Show unblocked tasks ready for work')
   .option('-b, --project <project>', 'Filter by project')
   .action((opts: ReadyOptions) => readyCommand(opts));
+
+program
+  .command('next')
+  .description('Get the next auto task ready for an agent')
+  .option('-b, --project <project>', 'Filter by project')
+  .option('--json', 'Output as JSON')
+  .action((opts: NextOptions) => nextCommand(opts));
 
 program
   .command('board')

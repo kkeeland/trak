@@ -23,5 +23,12 @@ export function initCommand(opts?: { global?: boolean }): void {
     return;
   }
   initDb();
+
+  // Create .trak/.gitignore to exclude SQLite but track JSONL
+  const gitignorePath = path.join(process.cwd(), '.trak', '.gitignore');
+  if (!fs.existsSync(gitignorePath)) {
+    fs.writeFileSync(gitignorePath, '# Track JSONL (portable), ignore SQLite (binary)\ntrak.db\ntrak.db-journal\ntrak.db-wal\ntrak.db-shm\n!trak.jsonl\n');
+  }
+
   console.log(`${c.green}✓${c.reset} Initialized trak database at ${c.dim}.trak/trak.db${c.reset}`);
 }

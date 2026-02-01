@@ -43,6 +43,14 @@ export function showCommand(id: string): void {
     const pctColor = pct === 100 ? c.green : pct >= 50 ? c.yellow : c.red;
     console.log(`  ${c.dim}Children:${c.reset}  ${total} tasks, ${pctColor}${done}/${total} complete (${pct}%)${c.reset}`);
   }
+  if (task.autonomy && task.autonomy !== 'manual') console.log(`  ${c.dim}Autonomy:${c.reset}  ${task.autonomy}`);
+  if (task.budget_usd !== null && task.budget_usd !== undefined) {
+    const budgetColor = task.cost_usd > task.budget_usd ? c.red : c.green;
+    console.log(`  ${c.dim}Budget:${c.reset}    ${budgetColor}$${task.budget_usd.toFixed(2)}${c.reset}`);
+    if (task.cost_usd > task.budget_usd) {
+      console.log(`  ${c.bgRed}${c.white} ⚠ OVER BUDGET ${c.reset} cost $${task.cost_usd.toFixed(4)} exceeds budget $${task.budget_usd.toFixed(2)}`);
+    }
+  }
   if (task.agent_session) console.log(`  ${c.dim}Session:${c.reset}   ${task.agent_session}`);
   if (task.tokens_used) console.log(`  ${c.dim}Tokens:${c.reset}    ${task.tokens_used.toLocaleString()}`);
   if (task.cost_usd) console.log(`  ${c.dim}Cost:${c.reset}      $${task.cost_usd.toFixed(4)}`);

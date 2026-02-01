@@ -45,4 +45,24 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
   afterWrite(db);
 
   console.log(`${c.green}✓${c.reset} ${STATUS_EMOJI.done} ${c.dim}${task.id}${c.reset} ${task.title}`);
+
+  // Event chain: find tasks that were blocked by this task and are now fully unblocked
+  const unblockedAutoTasks = db.prepare(`
+    SELECT t.* FROM tasks t
+    JOIN dependencies d ON d.child_id = t.id AND d.parent_id = ?
+    WHERE t.status IN ('open', 'wip', 'blocked')
+    AND t.autonomy = 'auto'
+    AND t.blocked_by = ''
+    AND NOT EXISTS (
+      SELECT 1 FROM dependencies d2
+      JOIN tasks dep ON dep.id = d2.parent_id
+      WHERE d2.child_id = t.id
+      AND dep.status NOT IN ('done', 'archived')
+    )
+  `).all(task.id) as Task[];
+
+  if (unblockedAutoTasks.length > 0) {
+    const items = unblockedAutoTasks.map(t => `${t.id} (${t.title})`).join(', ');
+    console.log(`⚡ Unblocked auto tasks: ${items}`);
+  }
 }

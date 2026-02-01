@@ -1,4 +1,4 @@
-import { getDb, Task, afterWrite } from '../db.js';
+import { getDb, Task, afterWrite, getConfigValue } from '../db.js';
 import { generateId, c, STATUS_EMOJI } from '../utils.js';
 
 export interface CreateOptions {
@@ -10,6 +10,10 @@ export interface CreateOptions {
   session?: string;
   epic?: string;
   isEpic?: boolean;
+  auto?: boolean;
+  review?: boolean;
+  approve?: boolean;
+  budget?: string;
 }
 
 export function createCommand(title: string, opts: CreateOptions): void {
@@ -22,9 +26,25 @@ export function createCommand(title: string, opts: CreateOptions): void {
     process.exit(1);
   }
 
+  // Determine autonomy level
+  let autonomy = 'manual';
+  if (opts.auto) autonomy = 'auto';
+  else if (opts.review) autonomy = 'review';
+  else if (opts.approve) autonomy = 'approve';
+  else if (opts.project) {
+    // Inherit from project default if set
+    const projectDefault = getConfigValue(`project.${opts.project}.default-autonomy`);
+    if (projectDefault && ['auto', 'review', 'approve', 'manual'].includes(projectDefault)) {
+      autonomy = projectDefault;
+    }
+  }
+
+  // Parse budget
+  const budgetUsd = opts.budget ? parseFloat(opts.budget) : null;
+
   db.prepare(`
-    INSERT INTO tasks (id, title, description, priority, project, parent_id, tags, agent_session, epic_id, is_epic)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, title, description, priority, project, parent_id, tags, agent_session, epic_id, is_epic, autonomy, budget_usd)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     title,
@@ -35,7 +55,9 @@ export function createCommand(title: string, opts: CreateOptions): void {
     opts.tags || '',
     opts.session || '',
     opts.epic || null,
-    opts.isEpic ? 1 : 0
+    opts.isEpic ? 1 : 0,
+    autonomy,
+    budgetUsd
   );
 
   // Add creation log entry
@@ -49,4 +71,6 @@ export function createCommand(title: string, opts: CreateOptions): void {
   console.log(`${c.green}✓${c.reset} Created ${c.bold}${id}${c.reset} ${STATUS_EMOJI.open} ${title}`);
   if (opts.project) console.log(`  ${c.dim}project:${c.reset} ${opts.project}`);
   if (opts.tags) console.log(`  ${c.dim}tags:${c.reset} ${opts.tags}`);
+  if (autonomy !== 'manual') console.log(`  ${c.dim}autonomy:${c.reset} ${autonomy}`);
+  if (budgetUsd !== null) console.log(`  ${c.dim}budget:${c.reset} $${budgetUsd.toFixed(2)}`);
 }

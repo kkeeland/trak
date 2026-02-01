@@ -35,6 +35,8 @@ export interface JsonlTask {
   created_from: string;
   verify_command: string;
   wip_snapshot: string;
+  autonomy: string;
+  budget_usd: number | null;
   journal: { timestamp: string; entry: string; author: string }[];
   deps: string[];  // parent_ids this task depends on
   claims: { agent: string; model: string; status: string; claimed_at: string; released_at: string | null }[];
@@ -106,6 +108,8 @@ export function exportToJsonl(db: Database.Database, dbPath: string): void {
       created_from: t.created_from,
       verify_command: t.verify_command,
       wip_snapshot: t.wip_snapshot,
+      autonomy: t.autonomy || 'manual',
+      budget_usd: t.budget_usd ?? null,
       journal: logsByTask.get(t.id) || [],
       deps: depsByChild.get(t.id) || [],
       claims: claimsByTask.get(t.id) || [],
@@ -148,8 +152,9 @@ export function importFromJsonl(db: Database.Database, records: JsonlTask[]): { 
     INSERT OR REPLACE INTO tasks (
       id, title, description, status, priority, project, blocked_by, parent_id,
       epic_id, is_epic, created_at, updated_at, agent_session, tokens_used, cost_usd,
-      tags, assigned_to, verified_by, verification_status, created_from, verify_command, wip_snapshot
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      tags, assigned_to, verified_by, verification_status, created_from, verify_command, wip_snapshot,
+      autonomy, budget_usd
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertDep = db.prepare('INSERT OR IGNORE INTO dependencies (child_id, parent_id) VALUES (?, ?)');
@@ -171,7 +176,7 @@ export function importFromJsonl(db: Database.Database, records: JsonlTask[]): { 
         r.agent_session || '', r.tokens_used ?? 0, r.cost_usd ?? 0,
         r.tags || '', r.assigned_to || '', r.verified_by || '',
         r.verification_status || '', r.created_from || '', r.verify_command || '',
-        r.wip_snapshot || ''
+        r.wip_snapshot || '', r.autonomy || 'manual', r.budget_usd ?? null
       );
       taskCount++;
 

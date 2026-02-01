@@ -29,6 +29,8 @@ export interface Task {
   created_from: string;
   verify_command: string;
   wip_snapshot: string;
+  autonomy: string;
+  budget_usd: number | null;
 }
 
 export interface Dependency {
@@ -106,6 +108,12 @@ function migrateColumns(db: Database.Database): void {
   if (!colNames.includes('wip_snapshot')) {
     db.exec("ALTER TABLE tasks ADD COLUMN wip_snapshot TEXT DEFAULT ''");
   }
+  if (!colNames.includes('autonomy')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN autonomy TEXT DEFAULT 'manual'");
+  }
+  if (!colNames.includes('budget_usd')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN budget_usd REAL DEFAULT NULL");
+  }
 }
 
 export function getDb(): Database.Database {
@@ -156,6 +164,8 @@ export function initDb(global?: boolean): Database.Database {
       created_from TEXT DEFAULT '',
       verify_command TEXT DEFAULT '',
       wip_snapshot TEXT DEFAULT '',
+      autonomy TEXT DEFAULT 'manual',
+      budget_usd REAL DEFAULT NULL,
       FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE SET NULL,
       FOREIGN KEY (epic_id) REFERENCES tasks(id) ON DELETE SET NULL
     );
