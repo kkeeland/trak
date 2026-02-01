@@ -19,6 +19,10 @@ import { exportCommand } from './commands/export.js';
 import { importCommand } from './commands/import.js';
 import { importBeadsCommand } from './commands/import-beads.js';
 import { setupCommand } from './commands/setup.js';
+import { traceCommand, TraceOptions } from './commands/trace.js';
+import { historyCommand } from './commands/history.js';
+import { contextCommand } from './commands/context.js';
+import { onboardCommand } from './commands/onboard.js';
 import { epicCreateCommand, epicListCommand, epicShowCommand, EpicListOptions } from './commands/epic.js';
 import { assignCommand } from './commands/assign.js';
 import { verifyCommand, VerifyOptions } from './commands/verify.js';
@@ -242,5 +246,32 @@ program
   .option('--agent <name>', 'Filter by agent')
   .option('--project <project>', 'Filter by project')
   .action((opts: StatsOptions) => statsCommand(opts));
+
+program
+  .command('trace')
+  .description('Trace task ancestry and downstream through dependency graph')
+  .argument('<id>', 'Task ID (or partial)')
+  .option('--forward', 'Show only downstream (what this unblocks)')
+  .option('--backward', 'Show only upstream (what this depends on)')
+  .option('--depth <n>', 'Max depth for graph traversal', '10')
+  .action((id: string, opts: TraceOptions) => traceCommand(id, opts));
+
+program
+  .command('history')
+  .description('Show complete timeline of a task — journal, status changes, cost')
+  .argument('<id>', 'Task ID (or partial)')
+  .action((id: string) => historyCommand(id));
+
+program
+  .command('context')
+  .description('Generate onboarding context document for a project')
+  .argument('<project>', 'Project name')
+  .action((project: string) => contextCommand(project));
+
+program
+  .command('onboard')
+  .description('Interactive project walkthrough for new agents')
+  .argument('<project>', 'Project name')
+  .action((project: string) => onboardCommand(project));
 
 program.parse();
