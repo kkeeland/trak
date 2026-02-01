@@ -14,7 +14,7 @@
 - ✅ JSONL sync layer — export/import works, git-based sync is functional
 - ⚠️ JSONL conflict resolution is basic (last-write-wins)
 - ⚠️ Cost tracking requires manual logging (`--cost`/`--tokens` flags) — no auto-integration yet
-- ⚠️ No npm package yet — install from git (see below)
+- ✅ Available on npm as `trak-cli`
 - 🔧 Multi-agent verification chains work but are still evolving
 
 ## Why
@@ -26,7 +26,13 @@ trak gives your agents a shared task board. Each task has a journal — a persis
 ## Quick Start
 
 ```bash
-# Install from git (no npm package yet)
+# Install from npm
+npm install -g trak-cli
+
+# Or run without installing
+npx trak-cli
+
+# Or install from git
 git clone https://github.com/kkeeland/trak.git
 cd trak && npm install && npm run build
 npm link  # makes `trak` available globally

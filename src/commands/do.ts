@@ -81,13 +81,10 @@ async function aiDecompose(input: string): Promise<AiResult> {
 
   const systemPrompt = `You are a work analyzer. Given a goal, decide:
 1. Can this be done by ONE agent in one session? (topology: "single")
-2. Or does it break into INDEPENDENT parallel tasks? (topology: "parallel", tasks: ["title1", "title2", ...])
+2. Or does it need multiple tasks? (topology: "parallel")
 
-Rules:
-- If tasks must be done sequentially, choose "single" (one agent handles the whole flow)
-- Only choose "parallel" when tasks are truly independent and can run simultaneously
-- 3-8 tasks max for parallel
-- Each task title should be a short, actionable phrase`;
+If parallel: Break this goal into 3-7 concrete tasks. Return ONLY short task title strings. No descriptions.
+If tasks must be done sequentially, choose "single" (one agent handles the whole flow).`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
   const response = await fetch(url, {

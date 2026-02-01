@@ -1,11 +1,16 @@
 {
-  "name": "trak-ai",
+  "name": "trak-cli",
   "version": "0.2.0",
   "description": "AI-native task tracker for agent swarms. SQLite speed, JSONL git sync, multi-agent coordination.",
   "main": "dist/cli.js",
   "bin": {
     "trak": "./dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "./node_modules/.bin/tsc && ./node_modules/.bin/esbuild src/cli.ts --bundle --platform=node --outfile=dist/cli.bundle.js --external:better-sqlite3 --format=cjs --minify 2>/dev/null",
     "dev": "tsc --watch",
