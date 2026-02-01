@@ -3,11 +3,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-export const TRAK_BIN = path.resolve(__dirname, '../../dist/cli.js');
+export const TRAK_BIN = path.resolve(__dirname, '../../dist/cli.bundle.js');
 const NODE = process.execPath;
 
 export function tmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'trak-test-'));
+  const base = fs.existsSync('/dev/shm') ? '/dev/shm' : os.tmpdir();
+  return fs.mkdtempSync(path.join(base, 'trak-test-'));
 }
 
 export const TEST_ENV = { ...process.env, NODE_ENV: 'test', NO_COLOR: '1', HOME: '/tmp/trak-no-home' };
