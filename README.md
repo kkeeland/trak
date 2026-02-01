@@ -56,6 +56,22 @@ trak create "My first task" --project myapp
 trak board             # see everything at a glance
 ```
 
+## Global Mode
+
+trak can run from any directory with a global database:
+
+```bash
+trak init --global              # create ~/.trak/trak.db
+trak create "Fix bug" --project api    # works from anywhere now
+```
+
+DB resolution order:
+1. `TRAK_DB` environment variable
+2. `.trak/trak.db` in current or parent directories (project-local)
+3. `~/.trak/trak.db` (global)
+
+Use project-local for repo-specific tasks, global for cross-project work.
+
 ## One-Command Integration
 
 trak auto-configures itself for your AI coding tool:
@@ -201,6 +217,14 @@ All operations under 25ms. SQLite doesn't need a network.
 
 Run them yourself: `npm run bench`
 
+## Tests
+
+76 tests covering every command, edge cases, and error handling.
+
+```bash
+npm test
+```
+
 ## FAQ
 
 **"This is just a SQLite wrapper around a todo list."**
@@ -221,7 +245,7 @@ Today, yes — agents log their own cost via `trak log`. Auto-detection hooks fo
 
 **"No tests?"**
 
-[Test suite](src/). 40+ tests covering every command.
+[Test suite](src/). 76 tests covering every command, edge cases, and error handling.
 
 **"Another npm package with native deps?"**
 
@@ -278,6 +302,7 @@ Beads is great — we used it before building trak. Here's what's different:
 | `setup` | Configure AI tool integration | `trak setup claude` |
 | `import-beads` | Import from beads workspace | `trak import-beads .beads/` |
 | `export` | Dump all data to JSON | `trak export` |
+| `search` | Search tasks by keyword | `trak search <query>` |
 | `import` | Import tasks from JSON | `trak import tasks.json` |
 
 ## Philosophy
