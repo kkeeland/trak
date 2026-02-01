@@ -2,7 +2,7 @@ import { getDb, Task } from '../db.js';
 import { generateId, c, STATUS_EMOJI } from '../utils.js';
 
 export interface CreateOptions {
-  brand?: string;
+  project?: string;
   priority?: string;
   description?: string;
   parent?: string;
@@ -21,14 +21,14 @@ export function createCommand(title: string, opts: CreateOptions): void {
   }
 
   db.prepare(`
-    INSERT INTO tasks (id, title, description, priority, brand, parent_id, tags, agent_session)
+    INSERT INTO tasks (id, title, description, priority, project, parent_id, tags, agent_session)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     title,
     opts.description || '',
     priority,
-    opts.brand || '',
+    opts.project || '',
     opts.parent || null,
     opts.tags || '',
     opts.session || ''
@@ -41,6 +41,6 @@ export function createCommand(title: string, opts: CreateOptions): void {
   `).run(id, `Created: ${title}`, opts.session || 'human');
 
   console.log(`${c.green}✓${c.reset} Created ${c.bold}${id}${c.reset} ${STATUS_EMOJI.open} ${title}`);
-  if (opts.brand) console.log(`  ${c.dim}brand:${c.reset} ${opts.brand}`);
+  if (opts.project) console.log(`  ${c.dim}project:${c.reset} ${opts.project}`);
   if (opts.tags) console.log(`  ${c.dim}tags:${c.reset} ${opts.tags}`);
 }

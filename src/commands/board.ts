@@ -1,15 +1,15 @@
 import { getDb, Task } from '../db.js';
-import { c, STATUS_EMOJI, statusColor, priorityLabel, truncate, getBrandColor } from '../utils.js';
+import { c, STATUS_EMOJI, statusColor, priorityLabel, truncate, getProjectColor } from '../utils.js';
 
-export function boardCommand(brand?: string): void {
+export function boardCommand(project?: string): void {
   const db = getDb();
 
   let sql = "SELECT * FROM tasks WHERE status NOT IN ('done', 'archived')";
   const params: any[] = [];
 
-  if (brand) {
-    sql += ' AND brand = ?';
-    params.push(brand);
+  if (project) {
+    sql += ' AND project = ?';
+    params.push(project);
   }
 
   sql += ' ORDER BY priority DESC, updated_at DESC';
@@ -20,22 +20,22 @@ export function boardCommand(brand?: string): void {
     return;
   }
 
-  // Group by brand
-  const byBrand = new Map<string, Task[]>();
+  // Group by project
+  const byProject = new Map<string, Task[]>();
   for (const t of tasks) {
-    const b = t.brand || '(no brand)';
-    if (!byBrand.has(b)) byBrand.set(b, []);
-    byBrand.get(b)!.push(t);
+    const b = t.project || '(no project)';
+    if (!byProject.has(b)) byProject.set(b, []);
+    byProject.get(b)!.push(t);
   }
 
-  for (const [brandName, brandTasks] of byBrand) {
-    const bc = getBrandColor(brandName);
-    console.log(`\n${bc}${c.bold}━━━ ${brandName.toUpperCase()} ━━━${c.reset} ${c.dim}(${brandTasks.length})${c.reset}`);
+  for (const [projectName, projectTasks] of byProject) {
+    const bc = getProjectColor(projectName);
+    console.log(`\n${bc}${c.bold}━━━ ${projectName.toUpperCase()} ━━━${c.reset} ${c.dim}(${projectTasks.length})${c.reset}`);
 
-    // Group by status within brand
+    // Group by status within project
     const statusOrder = ['wip', 'blocked', 'review', 'open'];
     for (const status of statusOrder) {
-      const statusTasks = brandTasks.filter(t => t.status === status);
+      const statusTasks = projectTasks.filter(t => t.status === status);
       if (statusTasks.length === 0) continue;
 
       const sc = statusColor(status);

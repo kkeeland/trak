@@ -31,7 +31,7 @@ export function importCommand(file: string): void {
   let logCount = 0;
 
   const insertTask = db.prepare(`
-    INSERT OR REPLACE INTO tasks (id, title, description, status, priority, brand, blocked_by, parent_id, created_at, updated_at, agent_session, tokens_used, cost_usd, tags)
+    INSERT OR REPLACE INTO tasks (id, title, description, status, priority, project, blocked_by, parent_id, created_at, updated_at, agent_session, tokens_used, cost_usd, tags)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
@@ -48,7 +48,7 @@ export function importCommand(file: string): void {
       for (const t of data.tasks) {
         insertTask.run(
           t.id, t.title, t.description || '', t.status || 'open', t.priority || 1,
-          t.brand || '', t.blocked_by || '', t.parent_id || null,
+          t.project || '', t.blocked_by || '', t.parent_id || null,
           t.created_at, t.updated_at, t.agent_session || '', t.tokens_used || 0,
           t.cost_usd || 0, t.tags || ''
         );

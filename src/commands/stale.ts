@@ -22,11 +22,11 @@ export function staleCommand(days?: string): void {
   for (const t of tasks) {
     const emoji = STATUS_EMOJI[t.status] || '?';
     const sc = statusColor(t.status);
-    const brandTag = t.brand ? `${c.cyan}[${t.brand}]${c.reset} ` : '';
+    const projectTag = t.project ? `${c.cyan}[${t.project}]${c.reset} ` : '';
     const prio = priorityLabel(t.priority);
     const age = formatDate(t.updated_at);
 
-    console.log(`  ${emoji} ${c.dim}${t.id}${c.reset} ${prio} ${brandTag}${sc}${truncate(t.title, 45)}${c.reset} ${c.dim}last: ${age}${c.reset}`);
+    console.log(`  ${emoji} ${c.dim}${t.id}${c.reset} ${prio} ${projectTag}${sc}${truncate(t.title, 45)}${c.reset} ${c.dim}last: ${age}${c.reset}`);
   }
   console.log();
 }

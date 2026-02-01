@@ -2,7 +2,7 @@ import { getDb, Task } from '../db.js';
 import { c, STATUS_EMOJI, statusColor, priorityLabel, formatDate, truncate, padRight } from '../utils.js';
 
 export interface ListOptions {
-  brand?: string;
+  project?: string;
   status?: string;
   tags?: string;
   verbose?: boolean;
@@ -14,9 +14,9 @@ export function listCommand(opts: ListOptions): void {
   let sql = 'SELECT * FROM tasks WHERE 1=1';
   const params: any[] = [];
 
-  if (opts.brand) {
-    sql += ' AND brand = ?';
-    params.push(opts.brand);
+  if (opts.project) {
+    sql += ' AND project = ?';
+    params.push(opts.project);
   }
   if (opts.status) {
     sql += ' AND status = ?';
@@ -44,13 +44,13 @@ export function listCommand(opts: ListOptions): void {
   for (const t of tasks) {
     const emoji = STATUS_EMOJI[t.status] || '?';
     const sc = statusColor(t.status);
-    const brandTag = t.brand ? `${c.cyan}[${t.brand}]${c.reset} ` : '';
+    const projectTag = t.project ? `${c.cyan}[${t.project}]${c.reset} ` : '';
     const id = `${c.dim}${t.id}${c.reset}`;
     const prio = priorityLabel(t.priority);
     const title = truncate(t.title, 50);
     const age = formatDate(t.updated_at);
 
-    console.log(`  ${emoji} ${id} ${prio} ${brandTag}${sc}${title}${c.reset} ${c.dim}${age}${c.reset}`);
+    console.log(`  ${emoji} ${id} ${prio} ${projectTag}${sc}${title}${c.reset} ${c.dim}${age}${c.reset}`);
 
     if (opts.verbose) {
       if (t.description) console.log(`    ${c.dim}${truncate(t.description, 70)}${c.reset}`);

@@ -2,7 +2,7 @@ import { getDb, Task } from '../db.js';
 import { c } from '../utils.js';
 
 export interface CostOptions {
-  brand?: string;
+  project?: string;
   week?: boolean;
 }
 
@@ -12,9 +12,9 @@ export function costCommand(opts: CostOptions): void {
   let sql = 'SELECT * FROM tasks WHERE (tokens_used > 0 OR cost_usd > 0)';
   const params: any[] = [];
 
-  if (opts.brand) {
-    sql += ' AND brand = ?';
-    params.push(opts.brand);
+  if (opts.project) {
+    sql += ' AND project = ?';
+    params.push(opts.project);
   }
 
   if (opts.week) {
@@ -32,18 +32,18 @@ export function costCommand(opts: CostOptions): void {
 
   const period = opts.week ? 'This Week' : 'All Time';
   console.log(`\n${c.bold}💰 Cost Report — ${period}${c.reset}`);
-  if (opts.brand) console.log(`  ${c.dim}Brand: ${opts.brand}${c.reset}`);
+  if (opts.project) console.log(`  ${c.dim}Project: ${opts.project}${c.reset}`);
   console.log(`${'─'.repeat(50)}\n`);
 
-  // Group by brand
-  const byBrand = new Map<string, { tokens: number; cost: number; count: number }>();
+  // Group by project
+  const byProject = new Map<string, { tokens: number; cost: number; count: number }>();
   let totalTokens = 0;
   let totalCost = 0;
 
   for (const t of tasks) {
-    const b = t.brand || '(none)';
-    if (!byBrand.has(b)) byBrand.set(b, { tokens: 0, cost: 0, count: 0 });
-    const entry = byBrand.get(b)!;
+    const b = t.project || '(none)';
+    if (!byProject.has(b)) byProject.set(b, { tokens: 0, cost: 0, count: 0 });
+    const entry = byProject.get(b)!;
     entry.tokens += t.tokens_used;
     entry.cost += t.cost_usd;
     entry.count++;
@@ -51,8 +51,8 @@ export function costCommand(opts: CostOptions): void {
     totalCost += t.cost_usd;
   }
 
-  for (const [brand, data] of byBrand) {
-    console.log(`  ${c.cyan}${brand}${c.reset}`);
+  for (const [project, data] of byProject) {
+    console.log(`  ${c.cyan}${project}${c.reset}`);
     console.log(`    Tasks: ${data.count}  Tokens: ${data.tokens.toLocaleString()}  Cost: ${c.yellow}$${data.cost.toFixed(4)}${c.reset}`);
   }
 

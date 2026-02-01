@@ -11,7 +11,7 @@ export interface Task {
   description: string;
   status: string;
   priority: number;
-  brand: string;
+  project: string;
   blocked_by: string;
   parent_id: string | null;
   created_at: string;
@@ -83,7 +83,7 @@ export function initDb(): Database.Database {
       description TEXT DEFAULT '',
       status TEXT DEFAULT 'open' CHECK(status IN ('open','wip','blocked','review','done','archived')),
       priority INTEGER DEFAULT 1 CHECK(priority BETWEEN 0 AND 3),
-      brand TEXT DEFAULT '',
+      project TEXT DEFAULT '',
       blocked_by TEXT DEFAULT '',
       parent_id TEXT,
       created_at TEXT DEFAULT (datetime('now')),
@@ -113,7 +113,7 @@ export function initDb(): Database.Database {
     );
 
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-    CREATE INDEX IF NOT EXISTS idx_tasks_brand ON tasks(brand);
+    CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
     CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
     CREATE INDEX IF NOT EXISTS idx_task_log_task_id ON task_log(task_id);
     CREATE INDEX IF NOT EXISTS idx_dependencies_child ON dependencies(child_id);

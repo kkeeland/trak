@@ -2,7 +2,7 @@ import { getDb, Task } from '../db.js';
 import { c, STATUS_EMOJI, priorityLabel, formatDate, truncate, statusColor } from '../utils.js';
 
 export interface ReadyOptions {
-  brand?: string;
+  project?: string;
 }
 
 export function readyCommand(opts: ReadyOptions): void {
@@ -22,9 +22,9 @@ export function readyCommand(opts: ReadyOptions): void {
   `;
   const params: any[] = [];
 
-  if (opts.brand) {
-    sql += ' AND t.brand = ?';
-    params.push(opts.brand);
+  if (opts.project) {
+    sql += ' AND t.project = ?';
+    params.push(opts.project);
   }
 
   sql += ' ORDER BY t.priority DESC, t.updated_at DESC';
@@ -41,10 +41,10 @@ export function readyCommand(opts: ReadyOptions): void {
   for (const t of tasks) {
     const emoji = STATUS_EMOJI[t.status] || '?';
     const sc = statusColor(t.status);
-    const brandTag = t.brand ? `${c.cyan}[${t.brand}]${c.reset} ` : '';
+    const projectTag = t.project ? `${c.cyan}[${t.project}]${c.reset} ` : '';
     const prio = priorityLabel(t.priority);
     const age = formatDate(t.updated_at);
 
-    console.log(`  ${emoji} ${c.dim}${t.id}${c.reset} ${prio} ${brandTag}${sc}${truncate(t.title, 50)}${c.reset} ${c.dim}${age}${c.reset}`);
+    console.log(`  ${emoji} ${c.dim}${t.id}${c.reset} ${prio} ${projectTag}${sc}${truncate(t.title, 50)}${c.reset} ${c.dim}${age}${c.reset}`);
   }
 }

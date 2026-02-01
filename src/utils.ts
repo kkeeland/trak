@@ -12,8 +12,8 @@ export const STATUS_EMOJI: Record<string, string> = {
 
 export const VALID_STATUSES = ['open', 'wip', 'blocked', 'review', 'done', 'archived'];
 
-// Brand colors — cycle through these
-const BRAND_COLORS = [
+// Project colors — cycle through these
+const PROJECT_COLORS = [
   '\x1b[36m',  // cyan
   '\x1b[33m',  // yellow
   '\x1b[35m',  // magenta
@@ -24,15 +24,15 @@ const BRAND_COLORS = [
   '\x1b[93m',  // bright yellow
 ];
 
-const brandColorMap = new Map<string, string>();
+const projectColorMap = new Map<string, string>();
 let colorIndex = 0;
 
-export function getBrandColor(brand: string): string {
-  if (!brandColorMap.has(brand)) {
-    brandColorMap.set(brand, BRAND_COLORS[colorIndex % BRAND_COLORS.length]);
+export function getProjectColor(project: string): string {
+  if (!projectColorMap.has(project)) {
+    projectColorMap.set(project, PROJECT_COLORS[colorIndex % PROJECT_COLORS.length]);
     colorIndex++;
   }
-  return brandColorMap.get(brand)!;
+  return projectColorMap.get(project)!;
 }
 
 // ANSI helpers

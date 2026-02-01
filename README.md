@@ -4,10 +4,10 @@
 
 ## What is trak?
 
-**trak** is a CLI task tracker built for AI agents managing multiple businesses and projects. It's designed around the way agents actually work:
+**trak** is a CLI task tracker built for AI agents managing multiple projects. It's designed around the way agents actually work:
 
 - **Tasks are conversations** — every task has a journal that captures the back-and-forth between humans and agents
-- **Multi-brand** — manage tasks across multiple businesses from a single board
+- **Multi-project** — manage tasks across multiple projects from a single board
 - **Heat scores** — auto-calculated priority based on dependency fan-out, age, and activity
 - **Cost tracking** — know what each task costs in tokens and dollars
 - **Agent-native** — tracks which agent session worked on what
@@ -29,12 +29,12 @@ npm link
 ## Quick Start
 
 ```bash
-trak init                                    # Initialize database
-trak create "Build landing page" -b peptok   # Create a task
-trak create "Fix auth bug" -b forge -p 3     # High priority
-trak list                                    # See all active tasks
-trak board                                   # Visual board grouped by brand
-trak ready                                   # What can I work on right now?
+trak init                                      # Initialize database
+trak create "Build landing page" --project peptok   # Create a task
+trak create "Fix auth bug" --project forge -p 3     # High priority
+trak list                                      # See all active tasks
+trak board                                     # Visual board grouped by project
+trak ready                                     # What can I work on right now?
 ```
 
 ## Commands
@@ -45,7 +45,7 @@ trak ready                                   # What can I work on right now?
 | `trak create <title>` | Create a new task |
 | `trak list` | List tasks with filters |
 | `trak ready` | Show unblocked tasks ready for work |
-| `trak board [brand]` | Board view grouped by brand |
+| `trak board [project]` | Board view grouped by project |
 | `trak show <id>` | Full task detail + journal |
 | `trak status <id> <status>` | Change task status |
 | `trak log <id> <entry>` | Append to task journal |
@@ -54,32 +54,42 @@ trak ready                                   # What can I work on right now?
 | `trak close <id>` | Mark task as done |
 | `trak digest` | What changed in the last 24 hours |
 | `trak stale [days]` | Tasks with no activity > N days |
-| `trak cost` | Cost tracking by brand |
+| `trak cost` | Cost tracking by project |
 | `trak heat` | Show tasks by heat score |
 | `trak export` | Dump to JSON |
 | `trak import <file>` | Import from JSON |
+| `trak import-beads <path>` | Import from beads JSONL workspace |
 
 ### Create Options
 
 ```bash
 trak create "title" \
-  -b brand           # Brand/project grouping
-  -p 2               # Priority (0-3)
-  -d "description"   # Detailed description
-  -t "tag1,tag2"     # Comma-separated tags
-  --parent trak-abc  # Parent task (subtask)
-  -s "agent-42"      # Agent session label
+  --project peptok    # Project grouping (-b alias)
+  -p 2                # Priority (0-3)
+  -d "description"    # Detailed description
+  -t "tag1,tag2"      # Comma-separated tags
+  --parent trak-abc   # Parent task (subtask)
+  -s "agent-42"       # Agent session label
 ```
 
 ### List Filters
 
 ```bash
-trak list --brand peptok    # Filter by brand
+trak list --project peptok  # Filter by project
 trak list --status wip      # Filter by status
 trak list --tags "urgent"   # Filter by tag
 trak list --all             # Include done/archived
 trak list -v                # Verbose output
 ```
+
+### Import from Beads
+
+```bash
+trak import-beads /path/to/.beads/            # Import from beads workspace dir
+trak import-beads /path/to/issues.jsonl       # Import from specific JSONL file
+```
+
+Maps beads fields to trak schema: labels → project + tags, status, priority, dependencies.
 
 ## Statuses
 
@@ -114,7 +124,7 @@ Traditional task trackers are built for humans clicking through web UIs. trak is
 
 1. **CLI-first** — AI agents don't click buttons
 2. **Journal-native** — every task captures the conversation, not just a title
-3. **Multi-brand** — agents manage portfolios, not single projects
+3. **Multi-project** — agents manage portfolios, not single projects
 4. **Cost-aware** — in an AI world, work has measurable token costs
 5. **Heat over priority** — computed importance beats gut-feel priority
 
@@ -124,7 +134,7 @@ trak doesn't try to be Jira. It's a lightweight, fast, local-first task tracker 
 
 SQLite database stored in `.trak/trak.db`:
 
-- **tasks** — core task data with status, priority, brand, cost tracking
+- **tasks** — core task data with status, priority, project, cost tracking
 - **dependencies** — directed graph of task dependencies
 - **task_log** — append-only journal for each task
 

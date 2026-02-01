@@ -17,6 +17,7 @@ import { costCommand, CostOptions } from './commands/cost.js';
 import { heatCommand } from './commands/heat.js';
 import { exportCommand } from './commands/export.js';
 import { importCommand } from './commands/import.js';
+import { importBeadsCommand } from './commands/import-beads.js';
 
 const program = new Command();
 
@@ -34,7 +35,7 @@ program
   .command('create')
   .description('Create a new task')
   .argument('<title>', 'Task title')
-  .option('-b, --brand <brand>', 'Brand/project grouping')
+  .option('-b, --project <project>', 'Project grouping')
   .option('-p, --priority <n>', 'Priority 0-3', '1')
   .option('-d, --description <text>', 'Task description')
   .option('--parent <id>', 'Parent task ID (for subtasks)')
@@ -46,7 +47,7 @@ program
   .command('list')
   .alias('ls')
   .description('List tasks with filters')
-  .option('-b, --brand <brand>', 'Filter by brand')
+  .option('-b, --project <project>', 'Filter by project')
   .option('--status <status>', 'Filter by status')
   .option('-t, --tags <tags>', 'Filter by tag')
   .option('-v, --verbose', 'Show details')
@@ -56,14 +57,14 @@ program
 program
   .command('ready')
   .description('Show unblocked tasks ready for work')
-  .option('-b, --brand <brand>', 'Filter by brand')
+  .option('-b, --project <project>', 'Filter by project')
   .action((opts: ReadyOptions) => readyCommand(opts));
 
 program
   .command('board')
-  .description('Board view grouped by brand with status colors')
-  .argument('[brand]', 'Filter to a single brand')
-  .action((brand?: string) => boardCommand(brand));
+  .description('Board view grouped by project with status colors')
+  .argument('[project]', 'Filter to a single project')
+  .action((project?: string) => boardCommand(project));
 
 program
   .command('show')
@@ -123,8 +124,8 @@ program
 
 program
   .command('cost')
-  .description('Cost tracking by brand')
-  .option('-b, --brand <brand>', 'Filter by brand')
+  .description('Cost tracking by project')
+  .option('-b, --project <project>', 'Filter by project')
   .option('-w, --week', 'Last 7 days only')
   .action((opts: CostOptions) => costCommand(opts));
 
@@ -143,5 +144,11 @@ program
   .description('Import tasks from JSON file')
   .argument('<file>', 'JSON file path')
   .action((file: string) => importCommand(file));
+
+program
+  .command('import-beads')
+  .description('Import tasks from beads JSONL workspace')
+  .argument('<path>', 'Path to beads workspace (.beads/ dir) or issues.jsonl file')
+  .action((path: string) => importBeadsCommand(path));
 
 program.parse();

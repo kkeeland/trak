@@ -22,7 +22,7 @@ export function showCommand(id: string): void {
 
   console.log(`  ${c.dim}Priority:${c.reset}  ${priorityLabel(task.priority)}`);
   console.log(`  ${c.dim}Heat:${c.reset}      ${heatBar(heat)} ${c.dim}(${heat})${c.reset}`);
-  if (task.brand) console.log(`  ${c.dim}Brand:${c.reset}     ${c.cyan}${task.brand}${c.reset}`);
+  if (task.project) console.log(`  ${c.dim}Project:${c.reset}     ${c.cyan}${task.project}${c.reset}`);
   if (task.tags) console.log(`  ${c.dim}Tags:${c.reset}      ${task.tags}`);
   if (task.blocked_by) console.log(`  ${c.dim}Blocked:${c.reset}   ${c.red}${task.blocked_by}${c.reset}`);
   if (task.parent_id) console.log(`  ${c.dim}Parent:${c.reset}    ${task.parent_id}`);

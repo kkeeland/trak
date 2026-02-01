@@ -6,12 +6,12 @@ export function digestCommand(): void {
 
   // Get all log entries from the last 24 hours
   const logs = db.prepare(`
-    SELECT l.*, t.title, t.status, t.brand
+    SELECT l.*, t.title, t.status, t.project
     FROM task_log l
     JOIN tasks t ON t.id = l.task_id
     WHERE l.timestamp > datetime('now', '-1 day')
     ORDER BY l.timestamp DESC
-  `).all() as (LogEntry & { title: string; status: string; brand: string })[];
+  `).all() as (LogEntry & { title: string; status: string; project: string })[];
 
   // Get tasks updated in last 24h
   const updatedTasks = db.prepare(`
@@ -51,8 +51,8 @@ export function digestCommand(): void {
   for (const [taskId, taskLogs] of byTask) {
     const first = taskLogs[0];
     const emoji = STATUS_EMOJI[first.status] || '?';
-    const brandTag = first.brand ? `${c.cyan}[${first.brand}]${c.reset} ` : '';
-    console.log(`  ${emoji} ${c.dim}${taskId}${c.reset} ${brandTag}${first.title}`);
+    const projectTag = first.project ? `${c.cyan}[${first.project}]${c.reset} ` : '';
+    console.log(`  ${emoji} ${c.dim}${taskId}${c.reset} ${projectTag}${first.title}`);
     for (const log of taskLogs) {
       console.log(`    ${c.dim}${formatDate(log.timestamp)}${c.reset} ${c.cyan}[${log.author}]${c.reset} ${log.entry}`);
     }

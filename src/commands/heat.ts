@@ -26,11 +26,11 @@ export function heatCommand(): void {
   for (const { task, heat } of heated) {
     const emoji = STATUS_EMOJI[task.status] || '?';
     const sc = statusColor(task.status);
-    const brandTag = task.brand ? `${c.cyan}[${task.brand}]${c.reset} ` : '';
+    const projectTag = task.project ? `${c.cyan}[${task.project}]${c.reset} ` : '';
     const prio = priorityLabel(task.priority);
     const bar = heatBar(heat, Math.max(maxHeat, 5));
 
-    console.log(`  ${bar} ${c.dim}(${heat.toString().padStart(2)})${c.reset} ${emoji} ${c.dim}${task.id}${c.reset} ${prio} ${brandTag}${sc}${truncate(task.title, 40)}${c.reset}`);
+    console.log(`  ${bar} ${c.dim}(${heat.toString().padStart(2)})${c.reset} ${emoji} ${c.dim}${task.id}${c.reset} ${prio} ${projectTag}${sc}${truncate(task.title, 40)}${c.reset}`);
   }
   console.log();
 }
