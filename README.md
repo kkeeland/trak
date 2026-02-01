@@ -111,6 +111,44 @@ trak claims                           # See who's working on what
 trak pipeline <epic-id>               # Verification pipeline view
 ```
 
+### ✅ Real Verification
+
+"Verified" isn't a label — trak actually runs your tests.
+
+**Run a command as verification:**
+```bash
+trak verify auth-fix --run "npm test"                    # runs tests, logs result
+trak verify landing --run "npx next build"               # build must succeed
+trak verify api --run "curl -s localhost:3000/health"     # check endpoint
+```
+
+If exit code 0 → PASSED. Non-zero → FAILED, status reverts to open. Command output, exit code, and duration are logged to the task journal.
+
+**Review what changed since WIP started:**
+```bash
+trak status auth-fix wip      # records git HEAD as snapshot
+# ... do work, make commits ...
+trak verify auth-fix --diff    # git diff snapshot..HEAD
+```
+
+**Checklist verification:**
+```bash
+trak verify auth-fix --checklist "tests pass,no TS errors,no console.logs"
+```
+Each item is logged to the journal as checked.
+
+**Auto-verify everything at once:**
+```bash
+trak verify auth-fix --auto
+```
+Runs the task's `verify_command` (if set), shows diff summary (if WIP snapshot exists), and logs it all.
+
+**Still works manually too:**
+```bash
+trak verify auth-fix --pass --agent cursor --reason "Code reviewed, looks good"
+trak verify auth-fix --fail --reason "Missing error handling"
+```
+
 ### 📊 Cost Tracking
 
 Know exactly what each task cost across agents and models.

@@ -26,6 +26,8 @@ export interface Task {
   verified_by: string;
   verification_status: string;
   created_from: string;
+  verify_command: string;
+  wip_snapshot: string;
 }
 
 export interface Dependency {
@@ -70,11 +72,17 @@ export function dbExists(): boolean {
   return findDbPath() !== null;
 }
 
-function migrateCreatedFrom(db: Database.Database): void {
+function migrateColumns(db: Database.Database): void {
   const cols = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
   const colNames = cols.map(c => c.name);
   if (!colNames.includes('created_from')) {
     db.exec("ALTER TABLE tasks ADD COLUMN created_from TEXT DEFAULT ''");
+  }
+  if (!colNames.includes('verify_command')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN verify_command TEXT DEFAULT ''");
+  }
+  if (!colNames.includes('wip_snapshot')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN wip_snapshot TEXT DEFAULT ''");
   }
 }
 
@@ -87,7 +95,7 @@ export function getDb(): Database.Database {
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
-  migrateCreatedFrom(db);
+  migrateColumns(db);
   return db;
 }
 
@@ -123,6 +131,8 @@ export function initDb(): Database.Database {
       verified_by TEXT DEFAULT '',
       verification_status TEXT DEFAULT '',
       created_from TEXT DEFAULT '',
+      verify_command TEXT DEFAULT '',
+      wip_snapshot TEXT DEFAULT '',
       FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE SET NULL,
       FOREIGN KEY (epic_id) REFERENCES tasks(id) ON DELETE SET NULL
     );

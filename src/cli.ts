@@ -211,10 +211,14 @@ program
 
 program
   .command('verify')
-  .description('Record verification result for a task')
+  .description('Verify a task — run commands, diff, checklist, or manual pass/fail')
   .argument('<id>', 'Task ID')
-  .option('--pass', 'Mark verification as passed')
-  .option('--fail', 'Mark verification as failed')
+  .option('--run <command>', 'Execute a shell command as verification')
+  .option('--diff', 'Show git diff since WIP started')
+  .option('--checklist <items>', 'Comma-separated verification criteria to check off')
+  .option('--auto', 'Run all configured verifications automatically')
+  .option('--pass', 'Manually mark verification as passed')
+  .option('--fail', 'Manually mark verification as failed')
   .option('--agent <name>', 'Verifying agent name', 'human')
   .option('--reason <text>', 'Verification reasoning')
   .action((id: string, opts: VerifyOptions) => verifyCommand(id, opts));
