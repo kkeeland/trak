@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -60,6 +61,17 @@ function getGlobalDbPath(): string {
   return path.join(os.homedir(), TRAK_DIR, DB_FILE);
 }
 
+function getGitRoot(): string | null {
+  try {
+    return execSync('git rev-parse --show-toplevel', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
 function findDbPath(): string | null {
   // 1. TRAK_DB env var takes priority
   if (process.env.TRAK_DB) {
@@ -67,11 +79,14 @@ function findDbPath(): string | null {
     return null;
   }
 
-  // 2. Walk up from cwd looking for project-local .trak/trak.db
+  // 2. Walk up from cwd looking for project-local .trak/trak.db (stop at git root)
+  const gitRoot = getGitRoot();
   let dir = process.cwd();
   while (true) {
     const candidate = path.join(dir, TRAK_DIR, DB_FILE);
     if (fs.existsSync(candidate)) return candidate;
+    // Stop at git root boundary (don't leak into parent repos)
+    if (gitRoot && path.resolve(dir) === path.resolve(gitRoot)) break;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -80,6 +95,31 @@ function findDbPath(): string | null {
   // 3. Fall back to global ~/.trak/trak.db
   const globalPath = getGlobalDbPath();
   if (fs.existsSync(globalPath)) return globalPath;
+
+  return null;
+}
+
+/**
+ * Find the .trak/ directory (not just DB file) — used for checking local project setup.
+ * Walks up to git root, same as findDbPath.
+ */
+export function findTrakDir(): string | null {
+  if (process.env.TRAK_DB) {
+    const dir = path.dirname(process.env.TRAK_DB);
+    if (fs.existsSync(dir)) return dir;
+    return null;
+  }
+
+  const gitRoot = getGitRoot();
+  let dir = process.cwd();
+  while (true) {
+    const candidate = path.join(dir, TRAK_DIR);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) return candidate;
+    if (gitRoot && path.resolve(dir) === path.resolve(gitRoot)) break;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
 
   return null;
 }
