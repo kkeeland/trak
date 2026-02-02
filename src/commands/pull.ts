@@ -67,11 +67,13 @@ export function pullCommand(): void {
   }
 
   // 3. Import from JSONL
+  // If no local DB exists, init one in the project directory (not global ~/.trak/).
+  // getDb() calls process.exit(1) when not found, so we can't rely on catch.
   let db;
-  try {
+  if (dbPath) {
     db = getDb();
-  } catch {
-    // DB doesn't exist yet — init it
+  } else {
+    // Fresh clone — create DB next to the JSONL file we found
     db = initDb();
   }
 

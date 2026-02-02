@@ -1,0 +1,6 @@
+# Track JSONL (portable), ignore SQLite (binary)
+trak.db
+trak.db-journal
+trak.db-wal
+trak.db-shm
+!trak.jsonl
