@@ -1,15 +1,21 @@
 import { getDb, Task, afterWrite } from '../db.js';
 import { c, STATUS_EMOJI, generateId } from '../utils.js';
+import { dispatchTask, buildAgentInstruction, type DispatchOptions, type DispatchResult } from '../dispatch.js';
 
 export interface SlingOptions {
-  execute?: boolean;  // Actually spawn the agent (future)
+  execute?: boolean;  // Legacy alias for --dispatch
+  dispatch?: boolean; // Actually spawn a Clawdbot sub-agent
   json?: boolean;     // Output JSON for piping
   project?: string;   // Filter by project when auto-picking
   goal?: string;      // Create a single task from a goal and dispatch it
+  model?: string;     // Model for dispatched agent
+  timeout?: string;   // Timeout for dispatched agent
+  dryRun?: boolean;   // Preview dispatch without executing
 }
 
-export function slingCommand(taskId?: string, opts?: SlingOptions): void {
+export async function slingCommand(taskId?: string, opts?: SlingOptions): Promise<void> {
   const db = getDb();
+  const shouldDispatch = opts?.dispatch || opts?.execute || false;
 
   let task: Task | undefined;
 
@@ -25,8 +31,32 @@ export function slingCommand(taskId?: string, opts?: SlingOptions): void {
     db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
       id, `Created via trak sling --goal`
     );
+    afterWrite(db);
 
-    // Claim it
+    // If --dispatch, spawn a real agent
+    if (shouldDispatch) {
+      const fakeTask = { id, title: opts.goal, description: opts.goal, project } as any;
+      const result = await dispatchTask(fakeTask, {
+        model: opts.model,
+        timeout: opts.timeout,
+        dryRun: opts.dryRun,
+      });
+
+      if (opts.json) {
+        console.log(JSON.stringify({
+          dispatched: result.ok,
+          task: { id, title: opts.goal, project, priority: 1, tags: 'auto,goal' },
+          label: result.label,
+          sessionKey: result.sessionKey,
+          error: result.error,
+        }, null, 2));
+      } else if (!result.ok) {
+        console.error(`${c.red}✗${c.reset} Dispatch failed for ${id}: ${result.error}`);
+      }
+      return;
+    }
+
+    // Non-dispatch: mark WIP and output payload
     db.prepare("UPDATE tasks SET status = 'wip', assigned_to = 'agent', updated_at = datetime('now') WHERE id = ?").run(id);
     db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
       id, 'Slung to agent for autonomous execution'
@@ -34,16 +64,8 @@ export function slingCommand(taskId?: string, opts?: SlingOptions): void {
     afterWrite(db);
 
     const payload = {
-      dispatched: true,
-      task: {
-        id,
-        title: opts.goal,
-        description: opts.goal,
-        project,
-        priority: 1,
-        tags: 'auto,goal',
-        convoy: null,
-      },
+      dispatched: false,
+      task: { id, title: opts.goal, description: opts.goal, project, priority: 1, tags: 'auto,goal', convoy: null },
       instruction: `Complete this goal: "${opts.goal}"\n\nWhen done, run: trak close ${id}\nIf you need to log progress: trak log ${id} "your update"`,
     };
 
@@ -52,13 +74,14 @@ export function slingCommand(taskId?: string, opts?: SlingOptions): void {
     } else {
       console.log(`${c.green}✓${c.reset} ⚡ Created & slung ${c.bold}${id}${c.reset} — ${opts.goal}`);
       console.log(`  ${c.dim}Status: wip | Assigned: agent${c.reset}`);
-      console.log(`  ${c.dim}Instruction: Complete and run 'trak close ${id}'${c.reset}`);
+      if (shouldDispatch) {
+        console.log(`  ${c.dim}Use --dispatch to spawn a Clawdbot agent${c.reset}`);
+      }
     }
     return;
   }
 
   if (taskId) {
-    // Resolve task by ID
     task = db.prepare('SELECT * FROM tasks WHERE id = ? OR id LIKE ?').get(taskId, `%${taskId}%`) as Task | undefined;
   } else {
     // Auto-pick: highest priority ready auto task
@@ -80,7 +103,7 @@ export function slingCommand(taskId?: string, opts?: SlingOptions): void {
       sql += ' AND t.project = ?';
       params.push(opts.project);
     }
-    sql += ' ORDER BY t.priority DESC, t.created_at ASC LIMIT 1';
+    sql += ' ORDER BY t.priority ASC, t.created_at ASC LIMIT 1';
     task = db.prepare(sql).get(...params) as Task | undefined;
   }
 
@@ -93,16 +116,43 @@ export function slingCommand(taskId?: string, opts?: SlingOptions): void {
     process.exit(1);
   }
 
-  // Claim the task
+  // Dispatch mode: spawn a real Clawdbot agent
+  if (shouldDispatch) {
+    const result = await dispatchTask(task, {
+      model: opts?.model,
+      timeout: opts?.timeout,
+      dryRun: opts?.dryRun,
+    });
+
+    if (opts?.json) {
+      console.log(JSON.stringify({
+        dispatched: result.ok,
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          project: task.project,
+          priority: task.priority,
+          tags: task.tags,
+          convoy: (task as any).convoy || null,
+        },
+        label: result.label,
+        sessionKey: result.sessionKey,
+        error: result.error,
+      }, null, 2));
+    }
+    return;
+  }
+
+  // Non-dispatch: claim and output payload (legacy behavior)
   db.prepare("UPDATE tasks SET status = 'wip', assigned_to = 'agent', updated_at = datetime('now') WHERE id = ?").run(task.id);
   db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
     task.id, 'Slung to agent for autonomous execution'
   );
   afterWrite(db);
 
-  // Build dispatch payload
   const payload = {
-    dispatched: true,
+    dispatched: false,
     task: {
       id: task.id,
       title: task.title,
@@ -112,7 +162,7 @@ export function slingCommand(taskId?: string, opts?: SlingOptions): void {
       tags: task.tags,
       convoy: (task as any).convoy || null,
     },
-    instruction: `Complete this task: "${task.title}"${task.description ? `\n\nDetails: ${task.description}` : ''}\n\nWhen done, run: trak close ${task.id}\nIf you need to log progress: trak log ${task.id} "your update"`,
+    instruction: buildAgentInstruction(task),
   };
 
   if (opts?.json) {
@@ -120,6 +170,6 @@ export function slingCommand(taskId?: string, opts?: SlingOptions): void {
   } else {
     console.log(`${c.green}✓${c.reset} ⚡ Slung ${c.bold}${task.id}${c.reset} — ${task.title}`);
     console.log(`  ${c.dim}Status: wip | Assigned: agent${c.reset}`);
-    console.log(`  ${c.dim}Instruction: Complete and run 'trak close ${task.id}'${c.reset}`);
+    console.log(`  ${c.dim}Use --dispatch to spawn a Clawdbot agent${c.reset}`);
   }
 }

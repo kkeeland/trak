@@ -1,7 +1,16 @@
 import { getDb, Task, afterWrite, resolveTimeout } from '../db.js';
 import { c } from '../utils.js';
-import { discoverGateway, spawnAgent, probeGateway, type GatewayConfig, type SpawnResult } from '../gateway.js';
-import { acquireLock } from '../locks.js';
+import {
+  discoverGateway,
+  probeGateway,
+  type GatewayConfig,
+} from '../gateway.js';
+import {
+  dispatchTask,
+  dispatchBatch,
+  type DispatchResult,
+  type DispatchOptions,
+} from '../dispatch.js';
 
 export interface RunOptions {
   project?: string;
@@ -38,15 +47,13 @@ function getReadyAutoTasks(project?: string, minPriority?: number): ReadyTask[] 
       AND dep.status NOT IN ('done', 'archived')
     )
     AND (t.budget_usd IS NULL OR t.cost_usd <= t.budget_usd)
-    AND (t.retry_after IS NULL OR t.retry_after <= datetime('now'))
   `;
   const params: any[] = [];
   if (project) {
     sql += ' AND t.project = ?';
     params.push(project);
   }
-  // Default: only dispatch P0-P1 tasks (priority 0-1), use --min-priority 3 for all
-  // Note: priority 0 = P0 (critical), 3 = P3 (low). Lower number = higher priority.
+  // Default: only dispatch P0-P1 tasks (priority 0-1)
   const maxPrio = minPriority ?? 1;
   sql += ' AND t.priority <= ?';
   params.push(maxPrio);
@@ -54,82 +61,11 @@ function getReadyAutoTasks(project?: string, minPriority?: number): ReadyTask[] 
   return db.prepare(sql).all(...params) as ReadyTask[];
 }
 
-function claimTask(taskId: string): void {
-  const db = getDb();
-  db.prepare("UPDATE tasks SET status = 'wip', assigned_to = 'agent', updated_at = datetime('now') WHERE id = ?").run(taskId);
-  db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(
-    taskId, 'Claimed by trak run orchestrator'
-  );
-  afterWrite(db);
-}
-
 function getConvoyName(convoyId: string | null): string {
   if (!convoyId) return '';
   const db = getDb();
   const convoy = db.prepare('SELECT name FROM convoys WHERE id = ?').get(convoyId) as { name: string } | undefined;
   return convoy?.name || convoyId;
-}
-
-function buildAgentTask(task: ReadyTask): string {
-  const cwd = process.cwd();
-  let instruction = `You are working on a task tracked by trak (task tracker CLI).
-
-## Task: ${task.title}
-- **ID:** ${task.id}
-- **Project:** ${task.project || 'default'}
-${task.description ? `- **Details:** ${task.description}` : ''}
-
-## Working Directory
-${cwd}
-
-## Instructions
-1. Complete the task described above
-2. Log progress as you go: \`trak log ${task.id} "what you did"\`
-3. When finished, close the task: \`trak close ${task.id}\`
-
-The close command will automatically unblock dependent tasks in the chain.
-Do NOT work on other tasks — focus only on this one.`;
-
-  return instruction;
-}
-
-async function dispatchTask(
-  gw: GatewayConfig,
-  task: ReadyTask,
-  opts: RunOptions,
-): Promise<{ id: string; title: string; label: string; sessionKey?: string } | null> {
-  // TODO: Workspace locking needs per-task target repos, not CWD-based locking.
-  // For now, skip locking in dispatch — agents handle their own git pull --rebase.
-  // Locks are still available via `trak locks` / `trak unlock` for manual use.
-
-  claimTask(task.id);
-
-  const agentTask = buildAgentTask(task);
-  const label = `trak-${task.id}`;
-
-  const timeoutSec = resolveTimeout({ cliTimeout: opts.timeout, task });
-
-  try {
-    const result: SpawnResult = await spawnAgent(gw, {
-      task: agentTask,
-      label,
-      cleanup: 'delete',
-      runTimeoutSeconds: timeoutSec,
-      ...(opts.model ? { model: opts.model } : {}),
-    });
-
-    if (result.ok) {
-      console.log(`  ${c.green}✓${c.reset} Spawned agent for ${c.bold}${task.id}${c.reset} — ${task.title}`);
-      console.log(`    ${c.dim}Label: ${label}${result.childSessionKey ? ` | Session: ${result.childSessionKey}` : ''}${c.reset}`);
-      return { id: task.id, title: task.title, label, sessionKey: result.childSessionKey };
-    } else {
-      console.error(`  ${c.red}✗${c.reset} Gateway rejected ${c.bold}${task.id}${c.reset}: ${result.error}`);
-      return null;
-    }
-  } catch (err: any) {
-    console.error(`  ${c.red}✗${c.reset} Failed to dispatch ${task.id}: ${err.message}`);
-    return null;
-  }
 }
 
 export async function runCommand(opts: RunOptions): Promise<void> {
@@ -142,7 +78,6 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     return;
   }
 
-  // Limit to maxAgents
   const tasksToRun = readyTasks.slice(0, maxAgents);
 
   console.log(`\n${c.bold}🚀 trak run${c.reset} — dispatching ${tasksToRun.length} task(s)\n`);
@@ -168,12 +103,11 @@ export async function runCommand(opts: RunOptions): Promise<void> {
   if (opts.dryRun) {
     for (const task of tasksToRun) {
       const label = `trak-${task.id}`;
-      const timeoutSec = resolveTimeout({ cliTimeout: opts.timeout, task });
+      const timeoutSec = resolveTimeout({ cliTimeout: opts.timeout, task: task as any });
       console.log(`  ${c.yellow}[dry-run]${c.reset} Would dispatch: ${c.bold}${task.id}${c.reset} — ${task.title}`);
       console.log(`    ${c.dim}Label: ${label} | Timeout: ${timeoutSec}s | Cleanup: delete${c.reset}`);
     }
 
-    // Probe gateway connectivity
     const reachable = await probeGateway(gw);
     console.log(`\n  ${c.dim}Gateway reachable:${c.reset} ${reachable ? `${c.green}yes${c.reset}` : `${c.red}no${c.reset}`}`);
     console.log(`\n${c.dim}No agents spawned (dry run)${c.reset}`);
@@ -191,13 +125,14 @@ export async function runCommand(opts: RunOptions): Promise<void> {
 
   console.log(`  ${c.dim}Gateway connected${c.reset} ${c.green}✓${c.reset}\n`);
 
-  // Dispatch each task
-  const dispatched: { id: string; title: string; label: string; sessionKey?: string }[] = [];
+  // Dispatch each task via native dispatch
+  const dispatchOpts: DispatchOptions = {
+    model: opts.model,
+    timeout: opts.timeout,
+  };
 
-  for (const task of tasksToRun) {
-    const result = await dispatchTask(gw, task, opts);
-    if (result) dispatched.push(result);
-  }
+  const results = await dispatchBatch(tasksToRun as any[], dispatchOpts);
+  const dispatched = results.filter(r => r.ok);
 
   console.log(`\n${c.dim}${'─'.repeat(50)}${c.reset}`);
   console.log(`\n${c.green}✓${c.reset} Dispatched ${dispatched.length}/${tasksToRun.length} tasks`);
@@ -206,12 +141,12 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     console.log(`${c.dim}  ${readyTasks.length - tasksToRun.length} more ready tasks waiting (increase --max-agents)${c.reset}`);
   }
 
-  // Show the watch hint or enter watch mode
+  // Watch mode
   if (opts.watch && !opts.dryRun) {
     console.log(`\n${c.bold}👀 Watch mode active${c.reset} — polling every 5s for newly ready tasks`);
     console.log(`${c.dim}Press Ctrl-C to exit${c.reset}\n`);
 
-    const alreadyDispatched = new Set(dispatched.map(d => d.id));
+    const alreadyDispatched = new Set(dispatched.map(d => d.taskId));
     let running = true;
 
     const cleanup = () => {
@@ -243,8 +178,8 @@ export async function runCommand(opts: RunOptions): Promise<void> {
 
         for (const task of batch) {
           alreadyDispatched.add(task.id);
-          const result = await dispatchTask(gw, task, opts);
-          if (result) {
+          const result = await dispatchTask(task as any, dispatchOpts, gw);
+          if (result.ok) {
             dispatched.push(result);
           }
         }
@@ -254,7 +189,7 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     await poll();
   } else {
     console.log(`\n${c.dim}Monitor progress: trak list --status wip${c.reset}`);
-    console.log(`${c.dim}When agents close tasks, blocked tasks auto-unblock.${c.reset}`);
+    console.log(`${c.dim}When agents close tasks, blocked tasks auto-unblock and dispatch.${c.reset}`);
     console.log(`${c.dim}Run 'trak run --watch' to auto-dispatch newly unblocked work.${c.reset}\n`);
   }
 }

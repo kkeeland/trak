@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import { getDb, Task, afterWrite } from '../db.js';
 import { c, STATUS_EMOJI } from '../utils.js';
-import { slingCommand } from './sling.js';
+import { autoDispatchUnblocked } from '../dispatch.js';
 import { hookTaskClosed } from '../hooks.js';
 
 export interface CloseOptions {
@@ -20,6 +20,7 @@ export interface CloseOptions {
 export interface VerificationCheck {
   name: string;
   passed: boolean;
+  skipped?: boolean;
   detail: string;
 }
 
@@ -41,7 +42,7 @@ function isGitRepo(): boolean {
  */
 function checkGitProof(task: Task, explicitCommit?: string): VerificationCheck {
   if (!isGitRepo()) {
-    return { name: 'git-proof', passed: true, detail: 'Not a git repo — skipped' };
+    return { name: 'git-proof', passed: false, skipped: true, detail: 'Not a git repo — skipped' };
   }
 
   // If explicit commit hash provided, verify it exists
@@ -114,23 +115,25 @@ function checkExplicitProof(proof?: string): VerificationCheck | null {
 /**
  * Check that the task has journal entries beyond just creation.
  * A task with only a creation entry and no work logged is suspicious.
+ * Excludes the initial "Created:" entry and system gate entries.
  */
 function checkJournalActivity(db: ReturnType<typeof getDb>, task: Task): VerificationCheck {
-  const entries = db.prepare(
-    "SELECT COUNT(*) as cnt FROM task_log WHERE task_id = ? AND author != 'system'"
+  // Count entries that represent real work (exclude creation entry and system entries)
+  const workEntries = db.prepare(
+    "SELECT COUNT(*) as cnt FROM task_log WHERE task_id = ? AND author != 'system' AND entry NOT LIKE 'Created:%'"
   ).get(task.id) as { cnt: number };
 
-  if (entries.cnt > 0) {
-    return { name: 'journal-activity', passed: true, detail: `${entries.cnt} journal entries by non-system authors` };
+  if (workEntries.cnt > 0) {
+    return { name: 'journal-activity', passed: true, detail: `${workEntries.cnt} work entries logged` };
   }
 
-  // Also count system entries (status changes, etc.)
+  // Also check system entries beyond creation (status changes, cost logs, etc.)
   const sysEntries = db.prepare(
-    "SELECT COUNT(*) as cnt FROM task_log WHERE task_id = ?"
+    "SELECT COUNT(*) as cnt FROM task_log WHERE task_id = ? AND entry NOT LIKE 'Created:%'"
   ).get(task.id) as { cnt: number };
 
-  if (sysEntries.cnt >= 2) {
-    return { name: 'journal-activity', passed: true, detail: `${sysEntries.cnt} total journal entries (system)` };
+  if (sysEntries.cnt >= 3) {
+    return { name: 'journal-activity', passed: true, detail: `${sysEntries.cnt} activity entries (system)` };
   }
 
   return { name: 'journal-activity', passed: false, detail: 'No meaningful work logged in journal' };
@@ -198,19 +201,19 @@ function runVerificationGate(db: ReturnType<typeof getDb>, task: Task, opts?: Cl
   checks.push(journalCheck);
 
   // Determine pass/fail: hard checks (verify_command, build, tests) must all pass.
-  // Soft checks (git-proof, journal-activity) generate warnings but don't block
-  // UNLESS there are zero hard checks — then at least one soft check must pass.
+  // Soft checks (git-proof, journal-activity, proof-artifact) are evidence checks —
+  // UNLESS there are zero hard checks, at least one non-skipped soft check must pass.
   const hardChecks = checks.filter(ch =>
     ['verify_command', 'build', 'tests'].includes(ch.name)
   );
   const softChecks = checks.filter(ch =>
-    !['verify_command', 'build', 'tests'].includes(ch.name)
+    !['verify_command', 'build', 'tests'].includes(ch.name) && !ch.skipped
   );
 
   const hardAllPassed = hardChecks.every(ch => ch.passed);
   const softAnyPassed = softChecks.some(ch => ch.passed);
 
-  // If there are hard checks, they must all pass. If no hard checks, at least one soft must pass.
+  // If there are hard checks, they must all pass. If no hard checks, at least one non-skipped soft must pass.
   const allPassed = hardChecks.length > 0 ? hardAllPassed : softAnyPassed;
 
   const lines = [
@@ -226,9 +229,14 @@ function runVerificationGate(db: ReturnType<typeof getDb>, task: Task, opts?: Cl
 
   for (const ch of checks) {
     const isHard = ['verify_command', 'build', 'tests'].includes(ch.name);
-    const icon = ch.passed
-      ? `${c.green}✓${c.reset}`
-      : isHard ? `${c.red}✗${c.reset}` : `${c.yellow}⚠${c.reset}`;
+    let icon: string;
+    if (ch.skipped) {
+      icon = `${c.dim}—${c.reset}`;
+    } else if (ch.passed) {
+      icon = `${c.green}✓${c.reset}`;
+    } else {
+      icon = isHard ? `${c.red}✗${c.reset}` : `${c.yellow}⚠${c.reset}`;
+    }
     console.log(`  ${icon} ${ch.name}: ${ch.detail.split('\n')[0]}`);
   }
 
@@ -350,7 +358,7 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
 
   console.log(`${c.green}✓${c.reset} ${STATUS_EMOJI.done} ${c.dim}${task.id}${c.reset} ${task.title}`);
 
-  // Event chain: find tasks that were blocked by this task and are now fully unblocked
+  // Event chain: find tasks unblocked by this close and dispatch them
   const unblockedAutoTasks = db.prepare(`
     SELECT t.* FROM tasks t
     JOIN dependencies d ON d.child_id = t.id AND d.parent_id = ?
@@ -371,13 +379,16 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
     for (const t of unblockedAutoTasks) {
       console.log(`TRAK_EVENT:UNBLOCKED:${t.id}:${t.title}`);
     }
-    for (const t of unblockedAutoTasks) {
-      try {
-        console.log(`⚡ Auto-dispatching: ${t.id} — ${t.title}`);
-        slingCommand(t.id, { json: true });
-      } catch {
-        console.log(`${c.dim}  (dispatch skipped for ${t.id})${c.reset}`);
+
+    // Native dispatch: spawn Clawdbot sub-agents for unblocked tasks (fire-and-forget)
+    // This is async — agents are spawned in the background via the gateway
+    autoDispatchUnblocked(task.id, { quiet: true }).then(results => {
+      const ok = results.filter(r => r.ok);
+      if (ok.length > 0) {
+        console.log(`⚡ Auto-dispatched ${ok.length} task(s) via native gateway`);
       }
-    }
+    }).catch(() => {
+      // Dispatch failures are logged in task journals — don't crash close
+    });
   }
 }

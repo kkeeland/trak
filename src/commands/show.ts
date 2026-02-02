@@ -1,5 +1,7 @@
 import { getDb, Task, LogEntry, Dependency, TaskClaim, calculateHeat, resolveTimeout } from '../db.js';
 import { c, STATUS_EMOJI, statusColor, priorityLabel, formatDate, heatBar } from '../utils.js';
+import { getTaskLocks, getTaskQueuePositions } from '../locks.js';
+import path from 'path';
 
 export function showCommand(id: string): void {
   const db = getDb();
@@ -60,6 +62,28 @@ export function showCommand(id: string): void {
     }
   }
   if (task.autonomy && task.autonomy !== 'manual') console.log(`  ${c.dim}Autonomy:${c.reset}  ${task.autonomy}`);
+
+  // Lock status
+  const taskLocks = getTaskLocks(task.id);
+  if (taskLocks.length > 0) {
+    for (const lock of taskLocks) {
+      const remaining = Math.max(0, Math.round(
+        (new Date(lock.expiresAt).getTime() - Date.now()) / 60_000
+      ));
+      const repoName = path.basename(lock.repoPath);
+      const lockLabel = lock.lockType === 'files'
+        ? `${lock.files.join(', ')} in ${repoName}`
+        : repoName;
+      console.log(`  ${c.dim}Lock:${c.reset}      🔒 ${c.yellow}${lockLabel}${c.reset} ${c.dim}(${remaining}m remaining)${c.reset}`);
+    }
+  }
+  const queuePositions = getTaskQueuePositions(task.id);
+  if (queuePositions.length > 0) {
+    for (const qp of queuePositions) {
+      const repoName = path.basename(qp.repoPath);
+      console.log(`  ${c.dim}Queued:${c.reset}    ⏳ #${qp.position + 1} for ${c.cyan}${repoName}${c.reset}`);
+    }
+  }
   // Timeout display — show per-task if set, or effective resolved value for auto tasks
   if (task.timeout_seconds && task.timeout_seconds > 0) {
     const ts = task.timeout_seconds;

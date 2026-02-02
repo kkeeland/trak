@@ -16,7 +16,7 @@ export interface CreateOptions {
   approve?: boolean;
   budget?: string;
   timeout?: string;
-  noRetry?: boolean;
+  retry?: boolean;  // --no-retry sets this to false
   maxRetries?: string;
 }
 
@@ -59,7 +59,7 @@ export function createCommand(title: string, opts: CreateOptions): void {
 
   // Determine max retries: --no-retry sets 0, --max-retries N, or config default
   let maxRetries = getDefaultMaxRetries();
-  if (opts.noRetry) {
+  if (opts.retry === false) {
     maxRetries = 0;
   } else if (opts.maxRetries !== undefined) {
     maxRetries = parseInt(opts.maxRetries, 10);

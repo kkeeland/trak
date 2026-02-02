@@ -14,7 +14,7 @@ import { depAddCommand, depRmCommand } from './commands/dep.js';
 import { closeCommand, CloseOptions } from './commands/close.js';
 import { digestCommand } from './commands/digest.js';
 import { staleCommand } from './commands/stale.js';
-import { costCommand, CostOptions } from './commands/cost.js';
+import { costCommand, CostOptions, costTrendCommand, CostTrendOptions, costModelsCommand, CostModelsOptions, costBudgetCommand, CostBudgetOptions, costTopCommand, CostTopOptions, costExportCommand, CostExportOptions, costPricesCommand } from './commands/cost.js';
 import { heatCommand } from './commands/heat.js';
 import { exportCommand } from './commands/export.js';
 import { importCommand } from './commands/import.js';
@@ -45,7 +45,11 @@ import { polecatCommand, PolecatOptions } from './commands/polecat.js';
 import { helpCommand } from './commands/help-request.js';
 import { mergeCommand } from './commands/merge.js';
 import { retryCommand, failCommand, RetryOptions } from './commands/retry.js';
-import { locksCommand, unlockCommand } from './commands/locks.js';
+import {
+  locksCommand, unlockCommand,
+  lockAcquireCommand, lockReleaseCommand, lockBreakCommand,
+  lockCheckCommand, lockRenewCommand, lockAuditCommand, lockQueueCommand,
+} from './commands/locks.js';
 
 const program = new Command();
 
@@ -186,13 +190,15 @@ program
   .argument('[days]', 'Staleness threshold', '7')
   .action((days?: string) => staleCommand(days));
 
-program
+const costCmd = program
   .command('cost')
-  .description('Cost tracking — total, per-task, or by project/label')
+  .description('Cost tracking — overview, trends, budgets, model breakdown')
   .argument('[id]', 'Task ID to show cost for (optional)')
   .option('-b, --project <project>', 'Filter by project')
   .option('-l, --label <label>', 'Filter by label/tag')
   .option('-w, --week', 'Last 7 days only')
+  .option('-m, --month', 'Last 30 days only')
+  .option('--agent <name>', 'Filter by agent')
   .action((id: string | undefined, opts: CostOptions) => {
     if (id) {
       costCommand(id, opts);
@@ -200,6 +206,47 @@ program
       costCommand(opts);
     }
   });
+
+costCmd
+  .command('trend')
+  .description('Show daily cost trend with sparkline chart')
+  .option('-b, --project <project>', 'Filter by project')
+  .option('-d, --days <n>', 'Number of days (default: 30)', '30')
+  .action((opts: CostTrendOptions) => costTrendCommand(opts));
+
+costCmd
+  .command('models')
+  .description('Cost breakdown by AI model')
+  .option('-b, --project <project>', 'Filter by project')
+  .action((opts: CostModelsOptions) => costModelsCommand(opts));
+
+costCmd
+  .command('budget')
+  .description('View/set task budgets and alerts')
+  .argument('[id]', 'Task ID (optional — omit for overview)')
+  .option('--set <amount>', 'Set budget amount in USD')
+  .option('-b, --project <project>', 'Filter by project')
+  .action((id: string | undefined, opts: CostBudgetOptions) => costBudgetCommand(id, opts));
+
+costCmd
+  .command('top')
+  .description('Show most expensive tasks')
+  .option('-b, --project <project>', 'Filter by project')
+  .option('-n, --limit <n>', 'Number of tasks (default: 10)', '10')
+  .action((opts: CostTopOptions) => costTopCommand(opts));
+
+costCmd
+  .command('export')
+  .description('Export cost data as JSON or CSV')
+  .option('-b, --project <project>', 'Filter by project')
+  .option('--since <date>', 'Start date (ISO format)')
+  .option('--csv', 'Export as CSV instead of JSON')
+  .action((opts: CostExportOptions) => costExportCommand(opts));
+
+costCmd
+  .command('prices')
+  .description('Show known model pricing reference')
+  .action(() => costPricesCommand());
 
 program
   .command('heat')
@@ -398,7 +445,11 @@ program
   .option('--json', 'Output dispatch payload as JSON')
   .option('-b, --project <project>', 'Filter by project when auto-picking')
   .option('--goal <goal>', 'Create a single task from a goal and dispatch it')
-  .option('--execute', 'Auto-spawn agent (future)')
+  .option('--dispatch', 'Spawn a Clawdbot sub-agent via native gateway dispatch')
+  .option('--execute', 'Alias for --dispatch')
+  .option('--model <model>', 'Model for dispatched agent')
+  .option('--timeout <seconds>', 'Timeout for dispatched agent')
+  .option('--dry-run', 'Preview dispatch without executing')
   .action((taskId: string | undefined, opts: SlingOptions) => slingCommand(taskId, opts));
 
 program
@@ -533,13 +584,68 @@ program
 // Workspace lock commands
 program
   .command('locks')
-  .description('Show active workspace locks')
+  .description('Show active workspace locks and queues')
   .action(() => locksCommand());
 
 program
   .command('unlock')
-  .description('Force-release a workspace lock')
+  .description('Release a workspace lock (alias for lock release)')
   .argument('<repo>', 'Repo path, basename, or task ID')
   .action((repo: string) => unlockCommand(repo));
+
+const lock = program
+  .command('lock')
+  .description('Workspace locking for multi-agent conflict prevention');
+
+lock
+  .command('acquire')
+  .description('Acquire a lock on a repo or specific files')
+  .argument('<repo>', 'Repository path')
+  .argument('<task-id>', 'Task ID requesting the lock')
+  .option('--agent <name>', 'Agent name', 'agent')
+  .option('--files <patterns>', 'Comma-separated file patterns to lock (omit for whole repo)')
+  .option('--queue', 'Queue if blocked instead of failing')
+  .option('-p, --priority <n>', 'Queue priority (0=highest)', '1')
+  .action((repo: string, taskId: string, opts: any) => lockAcquireCommand(repo, taskId, opts));
+
+lock
+  .command('release')
+  .description('Release a workspace lock')
+  .argument('<repo>', 'Repo path, basename, or task ID')
+  .action((repo: string) => lockReleaseCommand(repo));
+
+lock
+  .command('break')
+  .description('Emergency force-release a lock (with audit trail)')
+  .argument('<repo>', 'Repo path, basename, or task ID')
+  .option('--agent <name>', 'Who is breaking the lock', 'human')
+  .option('--reason <text>', 'Reason for breaking')
+  .action((repo: string, opts: any) => lockBreakCommand(repo, opts));
+
+lock
+  .command('check')
+  .description('Check if a task would conflict with existing locks')
+  .argument('<repo>', 'Repository path')
+  .argument('<task-id>', 'Task ID to check')
+  .option('--files <patterns>', 'Comma-separated file patterns')
+  .action((repo: string, taskId: string, opts: any) => lockCheckCommand(repo, taskId, opts));
+
+lock
+  .command('renew')
+  .description('Extend a lock\'s expiration (heartbeat)')
+  .argument('<repo>', 'Repository path')
+  .argument('<task-id>', 'Task ID that holds the lock')
+  .action((repo: string, taskId: string) => lockRenewCommand(repo, taskId));
+
+lock
+  .command('audit')
+  .description('Show lock audit trail')
+  .option('-n, --limit <n>', 'Number of events to show', '25')
+  .action((opts: any) => lockAuditCommand(opts));
+
+lock
+  .command('queue')
+  .description('Show all lock queues')
+  .action(() => lockQueueCommand());
 
 program.parse();
