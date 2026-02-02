@@ -76,6 +76,8 @@ program
   .option('--approve', 'Set autonomy to approve (human must approve before execution)')
   .option('--budget <amount>', 'Budget ceiling in USD')
   .option('--timeout <duration>', 'Agent timeout for this task (e.g. 30m, 1h, 900)')
+  .option('--no-retry', 'Disable automatic retries for this task (max_retries=0)')
+  .option('--max-retries <n>', 'Maximum retry attempts (default: config or 3)')
   .action((title: string, opts: CreateOptions) => createCommand(title, opts));
 
 program
@@ -169,6 +171,8 @@ program
   .option('--duration <seconds>', 'Duration in seconds (additive)')
   .option('--verify', 'Run verification checks before closing (build, tests, verify_command)')
   .option('--force', 'Bypass verification gate (human override)')
+  .option('--proof <artifact>', 'Proof of completion (URL, file path, or description)')
+  .option('--commit <hash>', 'Git commit hash as proof of work')
   .action((id: string, opts: CloseOptions) => closeCommand(id, opts));
 
 program
@@ -506,10 +510,12 @@ program
 // Retry / fail commands
 program
   .command('retry')
-  .description('Manually retry a failed or timed-out task (resets retry count, re-queues as open)')
-  .argument('<id>', 'Task ID')
+  .description('Manually retry a failed task, or list retryable tasks with --list')
+  .argument('[id]', 'Task ID (optional if using --list)')
   .option('--no-reset', 'Keep current retry count instead of resetting to 0')
-  .action((id: string, opts: RetryOptions) => retryCommand(id, opts));
+  .option('-l, --list', 'List all failed/retryable tasks')
+  .option('-a, --all', 'With --list: include tasks with retry history that are no longer failed')
+  .action((id: string | undefined, opts: RetryOptions) => retryCommand(id, opts));
 
 program
   .command('fail')

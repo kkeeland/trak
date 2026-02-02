@@ -360,9 +360,9 @@ export function parseDuration(input: string): number {
 
 /**
  * Resolve the effective timeout for a task in seconds.
- * Priority: cliTimeout → task.timeout_seconds → config "agent.timeout" → 900s default
+ * Priority: cliTimeout → task.timeout_seconds → project timeout → timeout profile → config "agent.timeout" → 900s default
  */
-export function resolveTimeout(opts: { cliTimeout?: string; task?: { timeout_seconds?: number | null } }): number {
+export function resolveTimeout(opts: { cliTimeout?: string; task?: { timeout_seconds?: number | null; project?: string; tags?: string } }): number {
   // 1. CLI flag (highest priority)
   if (opts.cliTimeout) {
     return parseDuration(opts.cliTimeout);
@@ -373,14 +373,35 @@ export function resolveTimeout(opts: { cliTimeout?: string; task?: { timeout_sec
     return opts.task.timeout_seconds;
   }
 
-  // 3. Global config
+  // 3. Per-project timeout
+  if (opts.task?.project) {
+    const projectTimeout = getConfigValue(`project.${opts.task.project}.timeout`);
+    if (projectTimeout !== undefined) {
+      if (typeof projectTimeout === 'number') return projectTimeout;
+      if (typeof projectTimeout === 'string') return parseDuration(projectTimeout);
+    }
+  }
+
+  // 4. Timeout profile (matched by task tags)
+  if (opts.task?.tags) {
+    const tags = opts.task.tags.split(',').map(t => t.trim().toLowerCase());
+    for (const tag of tags) {
+      const profileTimeout = getConfigValue(`timeout.profile.${tag}`);
+      if (profileTimeout !== undefined) {
+        if (typeof profileTimeout === 'number') return profileTimeout;
+        if (typeof profileTimeout === 'string') return parseDuration(profileTimeout);
+      }
+    }
+  }
+
+  // 5. Global config
   const configVal = getConfigValue('agent.timeout');
   if (configVal !== undefined) {
     if (typeof configVal === 'number') return configVal;
     if (typeof configVal === 'string') return parseDuration(configVal);
   }
 
-  // 4. Default
+  // 6. Default
   return DEFAULT_TIMEOUT_SECONDS;
 }
 
@@ -437,9 +458,38 @@ export function afterWrite(db: Database.Database, eventData?: { op: string; id: 
 }
 
 /**
- * Backoff schedule for retries: 1m, 5m, 15m
+ * Default backoff schedule for retries (in minutes).
+ * Each entry corresponds to the delay before retry N.
+ * If retry_count exceeds the array length, the last entry is used.
+ *
+ * Configurable via: trak config set retry.backoff "1,5,15,30,60"
  */
-const RETRY_BACKOFF_MINUTES = [1, 5, 15];
+const DEFAULT_RETRY_BACKOFF_MINUTES = [1, 5, 15, 30, 60];
+
+function getRetryBackoffMinutes(): number[] {
+  try {
+    const configured = getConfigValue('retry.backoff');
+    if (configured) {
+      if (Array.isArray(configured)) return configured.map(Number);
+      if (typeof configured === 'string') return configured.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    }
+  } catch { /* use default */ }
+  return DEFAULT_RETRY_BACKOFF_MINUTES;
+}
+
+/**
+ * Get the default max retries from config, or 3.
+ */
+export function getDefaultMaxRetries(): number {
+  try {
+    const configured = getConfigValue('retry.max-retries');
+    if (configured !== undefined) {
+      const n = typeof configured === 'number' ? configured : parseInt(String(configured), 10);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+  } catch { /* use default */ }
+  return 3;
+}
 
 /**
  * Handle task failure with auto-retry logic.
@@ -454,10 +504,11 @@ export function taskFailed(db: Database.Database, taskId: string, reason: string
   const newRetryCount = (task.retry_count || 0) + 1;
   const maxRetries = task.max_retries ?? 3;
 
-  if (newRetryCount < maxRetries) {
+  if (maxRetries > 0 && newRetryCount < maxRetries) {
     // Re-queue with backoff
-    const backoffIdx = Math.min(newRetryCount - 1, RETRY_BACKOFF_MINUTES.length - 1);
-    const backoffMinutes = RETRY_BACKOFF_MINUTES[backoffIdx];
+    const backoffSchedule = getRetryBackoffMinutes();
+    const backoffIdx = Math.min(newRetryCount - 1, backoffSchedule.length - 1);
+    const backoffMinutes = backoffSchedule[backoffIdx];
     const retryAfter = new Date(Date.now() + backoffMinutes * 60000).toISOString().replace('T', ' ').slice(0, 19);
 
     db.prepare(`

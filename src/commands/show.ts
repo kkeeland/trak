@@ -1,4 +1,4 @@
-import { getDb, Task, LogEntry, Dependency, TaskClaim, calculateHeat } from '../db.js';
+import { getDb, Task, LogEntry, Dependency, TaskClaim, calculateHeat, resolveTimeout } from '../db.js';
 import { c, STATUS_EMOJI, statusColor, priorityLabel, formatDate, heatBar } from '../utils.js';
 
 export function showCommand(id: string): void {
@@ -60,6 +60,16 @@ export function showCommand(id: string): void {
     }
   }
   if (task.autonomy && task.autonomy !== 'manual') console.log(`  ${c.dim}Autonomy:${c.reset}  ${task.autonomy}`);
+  // Timeout display — show per-task if set, or effective resolved value for auto tasks
+  if (task.timeout_seconds && task.timeout_seconds > 0) {
+    const ts = task.timeout_seconds;
+    const tStr = ts < 60 ? `${ts}s` : ts < 3600 ? `${(ts / 60).toFixed(0)}m` : `${(ts / 3600).toFixed(1)}h`;
+    console.log(`  ${c.dim}Timeout:${c.reset}   ${tStr} (per-task)`);
+  } else if (task.autonomy === 'auto') {
+    const effective = resolveTimeout({ task });
+    const eStr = effective < 60 ? `${effective}s` : effective < 3600 ? `${(effective / 60).toFixed(0)}m` : `${(effective / 3600).toFixed(1)}h`;
+    console.log(`  ${c.dim}Timeout:${c.reset}   ${eStr} (default)`);
+  }
   if (task.budget_usd !== null && task.budget_usd !== undefined) {
     const budgetColor = task.cost_usd > task.budget_usd ? c.red : c.green;
     console.log(`  ${c.dim}Budget:${c.reset}    ${budgetColor}$${task.budget_usd.toFixed(2)}${c.reset}`);

@@ -38,6 +38,7 @@ function getReadyAutoTasks(project?: string, minPriority?: number): ReadyTask[] 
       AND dep.status NOT IN ('done', 'archived')
     )
     AND (t.budget_usd IS NULL OR t.cost_usd <= t.budget_usd)
+    AND (t.retry_after IS NULL OR t.retry_after <= datetime('now'))
   `;
   const params: any[] = [];
   if (project) {

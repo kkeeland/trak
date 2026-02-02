@@ -13,6 +13,127 @@ export interface CloseOptions {
   duration?: string;
   verify?: boolean;
   force?: boolean;
+  proof?: string;
+  commit?: string;
+}
+
+export interface VerificationCheck {
+  name: string;
+  passed: boolean;
+  detail: string;
+}
+
+/**
+ * Check if we're inside a git repository.
+ */
+function isGitRepo(): boolean {
+  try {
+    execSync('git rev-parse --is-inside-work-tree', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check for git commits since the task's WIP snapshot, or recent commits
+ * mentioning the task ID. Returns check result.
+ */
+function checkGitProof(task: Task, explicitCommit?: string): VerificationCheck {
+  if (!isGitRepo()) {
+    return { name: 'git-proof', passed: true, detail: 'Not a git repo — skipped' };
+  }
+
+  // If explicit commit hash provided, verify it exists
+  if (explicitCommit) {
+    try {
+      const log = execSync(`git log --oneline -1 ${explicitCommit}`, {
+        encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+      return { name: 'git-proof', passed: true, detail: `Commit verified: ${log}` };
+    } catch {
+      return { name: 'git-proof', passed: false, detail: `Commit not found: ${explicitCommit}` };
+    }
+  }
+
+  // Check for commits mentioning task ID
+  try {
+    const mentions = execSync(`git log --oneline --all --grep="${task.id}" -5`, {
+      encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    if (mentions) {
+      const count = mentions.split('\n').length;
+      return { name: 'git-proof', passed: true, detail: `${count} commit(s) referencing ${task.id}` };
+    }
+  } catch {
+    // git log failed — not fatal
+  }
+
+  // Check for commits since WIP snapshot
+  const snapshot = task.wip_snapshot;
+  if (snapshot) {
+    try {
+      const diffStat = execSync(`git diff --stat ${snapshot}..HEAD`, {
+        encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+      if (diffStat) {
+        const lines = diffStat.split('\n');
+        const summary = lines[lines.length - 1] || '';
+        return { name: 'git-proof', passed: true, detail: `Changes since WIP: ${summary.trim()}` };
+      }
+      return { name: 'git-proof', passed: false, detail: `No changes since WIP snapshot (${snapshot.slice(0, 8)})` };
+    } catch {
+      // snapshot commit may not exist — fall through
+    }
+  }
+
+  // No explicit proof found — check for any recent commits (last 24h)
+  try {
+    const recent = execSync('git log --oneline --since="24 hours ago" -5', {
+      encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    if (recent) {
+      return { name: 'git-proof', passed: true, detail: `Recent commits found (last 24h)` };
+    }
+  } catch {
+    // fallthrough
+  }
+
+  return { name: 'git-proof', passed: false, detail: 'No git commits found as proof of work' };
+}
+
+/**
+ * Check for explicit proof string (URL, file path, description).
+ */
+function checkExplicitProof(proof?: string): VerificationCheck | null {
+  if (!proof) return null;
+  // Proof is a freeform string — log it as evidence
+  return { name: 'proof-artifact', passed: true, detail: `Proof: ${proof}` };
+}
+
+/**
+ * Check that the task has journal entries beyond just creation.
+ * A task with only a creation entry and no work logged is suspicious.
+ */
+function checkJournalActivity(db: ReturnType<typeof getDb>, task: Task): VerificationCheck {
+  const entries = db.prepare(
+    "SELECT COUNT(*) as cnt FROM task_log WHERE task_id = ? AND author != 'system'"
+  ).get(task.id) as { cnt: number };
+
+  if (entries.cnt > 0) {
+    return { name: 'journal-activity', passed: true, detail: `${entries.cnt} journal entries by non-system authors` };
+  }
+
+  // Also count system entries (status changes, etc.)
+  const sysEntries = db.prepare(
+    "SELECT COUNT(*) as cnt FROM task_log WHERE task_id = ?"
+  ).get(task.id) as { cnt: number };
+
+  if (sysEntries.cnt >= 2) {
+    return { name: 'journal-activity', passed: true, detail: `${sysEntries.cnt} total journal entries (system)` };
+  }
+
+  return { name: 'journal-activity', passed: false, detail: 'No meaningful work logged in journal' };
 }
 
 /**
@@ -20,8 +141,8 @@ export interface CloseOptions {
  * Returns true if all checks pass, false otherwise.
  * Stores results in the task journal.
  */
-function runVerificationGate(db: ReturnType<typeof getDb>, task: Task): boolean {
-  const checks: { name: string; passed: boolean; detail: string }[] = [];
+function runVerificationGate(db: ReturnType<typeof getDb>, task: Task, opts?: CloseOptions): boolean {
+  const checks: VerificationCheck[] = [];
 
   // 1. Run verify_command if configured on the task
   const verifyCmd = task.verify_command;
@@ -64,11 +185,33 @@ function runVerificationGate(db: ReturnType<typeof getDb>, task: Task): boolean 
     // No package.json or not parseable — skip build/test checks
   }
 
-  if (checks.length === 0) {
-    checks.push({ name: 'no-checks', passed: true, detail: 'No verification checks configured or detected' });
-  }
+  // 3. Git commit proof check
+  const gitCheck = checkGitProof(task, opts?.commit);
+  checks.push(gitCheck);
 
-  const allPassed = checks.every(ch => ch.passed);
+  // 4. Explicit proof artifact
+  const proofCheck = checkExplicitProof(opts?.proof);
+  if (proofCheck) checks.push(proofCheck);
+
+  // 5. Journal activity check — ensure work was actually logged
+  const journalCheck = checkJournalActivity(db, task);
+  checks.push(journalCheck);
+
+  // Determine pass/fail: hard checks (verify_command, build, tests) must all pass.
+  // Soft checks (git-proof, journal-activity) generate warnings but don't block
+  // UNLESS there are zero hard checks — then at least one soft check must pass.
+  const hardChecks = checks.filter(ch =>
+    ['verify_command', 'build', 'tests'].includes(ch.name)
+  );
+  const softChecks = checks.filter(ch =>
+    !['verify_command', 'build', 'tests'].includes(ch.name)
+  );
+
+  const hardAllPassed = hardChecks.every(ch => ch.passed);
+  const softAnyPassed = softChecks.some(ch => ch.passed);
+
+  // If there are hard checks, they must all pass. If no hard checks, at least one soft must pass.
+  const allPassed = hardChecks.length > 0 ? hardAllPassed : softAnyPassed;
 
   const lines = [
     `Verification gate ${allPassed ? 'PASSED' : 'FAILED'}`,
@@ -82,7 +225,10 @@ function runVerificationGate(db: ReturnType<typeof getDb>, task: Task): boolean 
     .run(allPassed ? 'passed' : 'failed', task.id);
 
   for (const ch of checks) {
-    const icon = ch.passed ? `${c.green}✓${c.reset}` : `${c.red}✗${c.reset}`;
+    const isHard = ['verify_command', 'build', 'tests'].includes(ch.name);
+    const icon = ch.passed
+      ? `${c.green}✓${c.reset}`
+      : isHard ? `${c.red}✗${c.reset}` : `${c.yellow}⚠${c.reset}`;
     console.log(`  ${icon} ${ch.name}: ${ch.detail.split('\n')[0]}`);
   }
 
@@ -121,7 +267,7 @@ export function closeCommand(id: string, opts?: CloseOptions): void {
 
   if (opts?.verify) {
     console.log(`${c.cyan}🔒 Running verification gate for${c.reset} ${c.bold}${task.id}${c.reset}\n`);
-    const passed = runVerificationGate(db, task);
+    const passed = runVerificationGate(db, task, opts);
     if (!passed) {
       db.prepare("UPDATE tasks SET status = 'open', updated_at = datetime('now') WHERE id = ?").run(task.id);
       db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'system')").run(

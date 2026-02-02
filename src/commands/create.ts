@@ -1,4 +1,4 @@
-import { getDb, Task, afterWrite, getConfigValue, parseDuration } from '../db.js';
+import { getDb, Task, afterWrite, getConfigValue, parseDuration, resolveTimeout, getDefaultMaxRetries } from '../db.js';
 import { generateId, c, STATUS_EMOJI } from '../utils.js';
 import { hookTaskCreated } from '../hooks.js';
 
@@ -16,6 +16,8 @@ export interface CreateOptions {
   approve?: boolean;
   budget?: string;
   timeout?: string;
+  noRetry?: boolean;
+  maxRetries?: string;
 }
 
 export function createCommand(title: string, opts: CreateOptions): void {
@@ -44,9 +46,29 @@ export function createCommand(title: string, opts: CreateOptions): void {
   // Parse budget
   const budgetUsd = opts.budget ? parseFloat(opts.budget) : null;
 
+  // Parse timeout — CLI flag takes priority, then fall back to project default
+  let timeoutSeconds: number | null = null;
+  if (opts.timeout) {
+    timeoutSeconds = parseDuration(opts.timeout);
+  } else if (opts.project) {
+    const projectTimeout = getConfigValue(`project.${opts.project}.timeout`);
+    if (projectTimeout !== undefined) {
+      timeoutSeconds = typeof projectTimeout === 'number' ? projectTimeout : parseDuration(String(projectTimeout));
+    }
+  }
+
+  // Determine max retries: --no-retry sets 0, --max-retries N, or config default
+  let maxRetries = getDefaultMaxRetries();
+  if (opts.noRetry) {
+    maxRetries = 0;
+  } else if (opts.maxRetries !== undefined) {
+    maxRetries = parseInt(opts.maxRetries, 10);
+    if (isNaN(maxRetries) || maxRetries < 0) maxRetries = getDefaultMaxRetries();
+  }
+
   db.prepare(`
-    INSERT INTO tasks (id, title, description, priority, project, parent_id, tags, agent_session, epic_id, is_epic, autonomy, budget_usd)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, title, description, priority, project, parent_id, tags, agent_session, epic_id, is_epic, autonomy, budget_usd, timeout_seconds, max_retries)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     title,
@@ -59,7 +81,9 @@ export function createCommand(title: string, opts: CreateOptions): void {
     opts.epic || null,
     opts.isEpic ? 1 : 0,
     autonomy,
-    budgetUsd
+    budgetUsd,
+    timeoutSeconds,
+    maxRetries
   );
 
   // Add creation log entry
@@ -82,7 +106,8 @@ export function createCommand(title: string, opts: CreateOptions): void {
       epic_id: opts.epic || null,
       is_epic: opts.isEpic ? 1 : 0,
       autonomy,
-      budget_usd: budgetUsd
+      budget_usd: budgetUsd,
+      timeout_seconds: timeoutSeconds
     }
   });
 
@@ -95,4 +120,8 @@ export function createCommand(title: string, opts: CreateOptions): void {
   if (opts.tags) console.log(`  ${c.dim}tags:${c.reset} ${opts.tags}`);
   if (autonomy !== 'manual') console.log(`  ${c.dim}autonomy:${c.reset} ${autonomy}`);
   if (budgetUsd !== null) console.log(`  ${c.dim}budget:${c.reset} $${budgetUsd.toFixed(2)}`);
+  if (timeoutSeconds !== null) {
+    const durStr = timeoutSeconds < 60 ? `${timeoutSeconds}s` : timeoutSeconds < 3600 ? `${(timeoutSeconds / 60).toFixed(0)}m` : `${(timeoutSeconds / 3600).toFixed(1)}h`;
+    console.log(`  ${c.dim}timeout:${c.reset} ${durStr}`);
+  }
 }

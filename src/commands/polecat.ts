@@ -1,4 +1,4 @@
-import { getDb, Task, afterWrite, resolveTimeout } from '../db.js';
+import { getDb, Task, afterWrite, resolveTimeout, taskFailed } from '../db.js';
 import { c, STATUS_EMOJI } from '../utils.js';
 import { execSync } from 'child_process';
 
@@ -38,20 +38,18 @@ export async function polecatCommand(taskId: string, opts: PolecatOptions): Prom
   // Resolve timeout: CLI flag → task.timeout_seconds → config → 15min default
   const timeoutSec = resolveTimeout({ cliTimeout: opts.timeout, task });
 
-  // Self-destruct timer
+  // Self-destruct timer — triggers retry logic on timeout
   const timer = setTimeout(() => {
     console.error(`\n${c.red}✗ TIMEOUT${c.reset} — polecat killed after ${timeoutSec}s`);
-    logToTask(taskId, `Polecat timed out after ${timeoutSec}s`);
-    resetTask(taskId);
+    failTaskWithRetry(task.id, `Polecat timed out after ${timeoutSec}s`);
     process.exit(2);
   }, timeoutSec * 1000);
 
-  // Clean exit on signals
+  // Clean exit on signals — triggers retry logic on interruption
   const cleanup = () => {
     clearTimeout(timer);
     console.error(`\n${c.yellow}⚠ INTERRUPTED${c.reset} — polecat caught signal`);
-    logToTask(taskId, 'Polecat interrupted by signal');
-    resetTask(taskId);
+    failTaskWithRetry(task.id, 'Polecat interrupted by signal');
     process.exit(130);
   };
   process.on('SIGINT', cleanup);
@@ -131,9 +129,14 @@ export async function polecatCommand(taskId: string, opts: PolecatOptions): Prom
       process.exit(1);
     }
   } else {
-    // Reset to open so another agent can pick it up
-    resetTask(task.id);
-    console.log(`  ${c.bold}Result:${c.reset}  ${c.red}✗ FAILED${c.reset}`);
+    // Use taskFailed() for proper retry tracking with backoff
+    const reason = errorMsg || 'Polecat execution failed';
+    const result = failTaskWithRetry(task.id, reason);
+    if (result?.requeued) {
+      console.log(`  ${c.bold}Result:${c.reset}  ${c.yellow}⟳ RETRY ${result.retryCount}/${result.maxRetries}${c.reset} — re-queued with backoff`);
+    } else {
+      console.log(`  ${c.bold}Result:${c.reset}  ${c.red}✗ PERMANENTLY FAILED${c.reset}`);
+    }
     if (errorMsg) {
       console.log(`  ${c.bold}Error:${c.reset}  ${errorMsg}`);
     }
@@ -235,15 +238,23 @@ function logToTask(taskId: string, entry: string): void {
   }
 }
 
-function resetTask(taskId: string): void {
+function failTaskWithRetry(taskId: string, reason: string): { requeued: boolean; retryCount: number; maxRetries: number } | null {
   try {
     const db = getDb();
-    db.prepare("UPDATE tasks SET status = 'open', assigned_to = '', updated_at = datetime('now') WHERE id = ?").run(taskId);
-    db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'polecat')").run(
-      taskId, 'Polecat failed — task reset to open'
-    );
-    afterWrite(db);
+    const result = taskFailed(db, taskId, reason);
+    // Clear assigned_to so another agent can pick it up
+    db.prepare("UPDATE tasks SET assigned_to = '' WHERE id = ?").run(taskId);
+    return result;
   } catch {
-    // Best-effort
+    // Best-effort — fall back to simple reset
+    try {
+      const db = getDb();
+      db.prepare("UPDATE tasks SET status = 'open', assigned_to = '', updated_at = datetime('now') WHERE id = ?").run(taskId);
+      db.prepare("INSERT INTO task_log (task_id, entry, author) VALUES (?, ?, 'polecat')").run(
+        taskId, `Polecat failed (retry error): ${reason}`
+      );
+      afterWrite(db);
+    } catch { /* truly best-effort */ }
+    return null;
   }
 }
